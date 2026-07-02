@@ -60,6 +60,11 @@
   .month-nav button:hover:not(:disabled){border-color:var(--ink);}
   .month-nav button:disabled{opacity:.25;cursor:not-allowed;}
   .month-label{font-size:19px;font-weight:700;min-width:190px;text-align:center;}
+  .month-input{
+    font-size:19px;font-weight:700;text-align:center;color:var(--ink);
+    background:transparent;border:none;padding:4px 8px;border-radius:var(--radius-sm);cursor:pointer;
+  }
+  .month-input:hover{background:var(--surface);}
   .month-status{font-size:11px;color:var(--ink-soft);text-align:center;margin-top:1px;}
   .page-title{font-size:19px;font-weight:700;margin-bottom:22px;}
 
@@ -190,12 +195,11 @@
   </aside>
 
   <div class="main">
-    <div class="topbar">
+    <div id="error-banner" style="display:none;background:var(--neg-bg);color:var(--neg);border:1px solid var(--neg);border-radius:var(--radius-md);padding:12px 16px;margin-bottom:16px;font-size:13px;"></div>
+    <div class="topbar" id="topbar-monthnav">
       <div class="month-nav">
         <button id="btn-prev-mes">&larr;</button>
-        <div>
-          <div class="month-label" id="month-label">—</div>
-        </div>
+        <input type="month" id="month-input" class="month-input" min="2026-07">
         <button id="btn-next-mes">&rarr;</button>
       </div>
     </div>
@@ -319,13 +323,18 @@
     <section id="page-recorrentes" class="page" hidden>
       <div class="page-title">Recorrentes</div>
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Nova recorrente</div></div>
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Nova recorrente</div>
+            <div class="panel-sub">O valor entra automaticamente na fatura do cartão de crédito de cada mês em que estiver ativa</div>
+          </div>
+        </div>
         <div class="form-row">
           <div class="form-field"><label>Nome</label><input id="rec-nome" placeholder="Ex: Netflix"></div>
           <div class="form-field"><label>Categoria</label><select id="rec-categoria"></select></div>
           <div class="form-field"><label>Valor</label><input id="rec-valor" type="text" placeholder="R$ 0,00"></div>
-          <div class="form-field"><label>Mês de início</label><select id="rec-inicio"></select></div>
-          <div class="form-field"><label>Mês de término</label><select id="rec-fim"><option value="">Sem término</option></select></div>
+          <div class="form-field"><label>Mês de início</label><input type="month" id="rec-inicio" min="2026-07"></div>
+          <div class="form-field"><label>Mês de término</label><input type="month" id="rec-fim" min="2026-07" placeholder="Sem término"></div>
           <button class="btn btn-primary" id="btn-add-rec">Adicionar</button>
         </div>
         <table>
@@ -342,15 +351,14 @@
         <div class="panel-head"><div class="panel-title">Nova dívida</div></div>
         <div class="form-row">
           <div class="form-field"><label>Nome</label><input id="divida-nome" placeholder="Ex: Nubank Desenrola"></div>
-          <div class="form-field"><label>Categoria</label><select id="divida-categoria"></select></div>
           <div class="form-field"><label>Valor da parcela</label><input id="divida-valor" type="text" placeholder="R$ 0,00"></div>
           <div class="form-field"><label>Total de parcelas</label><input id="divida-total" type="number" min="1" value="1"></div>
           <div class="form-field"><label>Entrada (opcional)</label><input id="divida-entrada" type="text" placeholder="R$ 0,00"></div>
-          <div class="form-field"><label>Mês de início</label><select id="divida-mes-inicio"></select></div>
+          <div class="form-field"><label>Mês de início</label><input type="month" id="divida-mes-inicio" min="2026-07"></div>
           <button class="btn btn-primary" id="btn-add-divida">Adicionar</button>
         </div>
         <table>
-          <thead><tr><th>Nome</th><th>Categoria</th><th class="num">Parcela</th><th class="num">Valor</th><th class="num">Entrada</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nome</th><th class="num">Parcela</th><th class="num">Valor</th><th class="num">Entrada</th><th>Status</th><th></th></tr></thead>
           <tbody id="tbl-dividas"></tbody>
         </table>
       </div>
@@ -362,12 +370,20 @@
       <div class="panel">
         <div class="panel-head">
           <div>
-            <div class="panel-title">Valor esperado por categoria</div>
-            <div class="panel-sub">Referente ao mês selecionado no topo</div>
+            <div class="panel-title">Novo valor esperado</div>
+            <div class="panel-sub">Vale a partir do mês escolhido, pra frente, até você lançar um novo valor pra mesma categoria</div>
           </div>
-          <button class="btn btn-ghost btn-sm" id="btn-copiar-orcamento">Copiar do mês anterior</button>
         </div>
-        <div id="orcamento-form"></div>
+        <div class="form-row">
+          <div class="form-field"><label>Categoria</label><select id="orc-categoria"></select></div>
+          <div class="form-field"><label>Valor esperado</label><input id="orc-valor" type="text" placeholder="R$ 0,00"></div>
+          <div class="form-field"><label>Vigente a partir de</label><input type="month" id="orc-vigencia" min="2026-07"></div>
+          <button class="btn btn-primary" id="btn-add-orc">Adicionar</button>
+        </div>
+        <table>
+          <thead><tr><th>Categoria</th><th class="num">Valor esperado</th><th>Vigente a partir de</th><th></th></tr></thead>
+          <tbody id="tbl-orcamento"></tbody>
+        </table>
       </div>
     </section>
 
@@ -464,6 +480,12 @@ function toast(msg){
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2400);
 }
+function showError(msg){
+  const el = document.getElementById('error-banner');
+  el.textContent = 'Erro: ' + msg + ' — copie esta mensagem e envie pro Claude.';
+  el.style.display = 'block';
+}
+function hideError(){ document.getElementById('error-banner').style.display = 'none'; }
 
 /* ==================== CURRENCY MASK ==================== */
 function maskCurrencyInput(el){
@@ -479,16 +501,20 @@ function getCurrencyValue(el){
 }
 
 /* ==================== MODAL ==================== */
-function registerEdit(table, id, title, fields, values){
+function registerEdit(table, id, title, fields, values, monthFields){
   const key = 'e' + (editCounter++);
-  editRegistry[key] = { table, id, title, fields, values };
+  editRegistry[key] = { table, id, title, fields, values, monthFields: monthFields || [] };
   return key;
 }
 function editBtn(key){ return `<button class="icon-btn" onclick="openEditFromRegistry('${key}')" aria-label="Editar">✎</button>`; }
 function delBtn(table, id){ return `<button class="icon-btn danger" onclick="deleteRow('${table}','${id}')" aria-label="Remover">✕</button>`; }
-function openEditFromRegistry(key){
+async function openEditFromRegistry(key){
   const cfg = editRegistry[key];
   openModal(cfg.title, cfg.fields, cfg.values, async (vals) => {
+    for(const mk of cfg.monthFields){
+      if(vals[mk]){ const mes = await ensureMesExists(vals[mk]); vals[mk] = mes.id; }
+      else vals[mk] = null;
+    }
     const { error } = await db.from(cfg.table).update(vals).eq('id', cfg.id);
     if(error){ toast('Erro: ' + error.message); return; }
     closeModal(); await bootstrap();
@@ -512,6 +538,9 @@ function openModal(title, fields, values, onSave){
     if(f.type === 'date'){
       return `<div class="form-field"><label>${f.label}</label><input type="date" data-key="${f.key}" value="${val||''}"></div>`;
     }
+    if(f.type === 'month'){
+      return `<div class="form-field"><label>${f.label}</label><input type="month" data-key="${f.key}" min="2026-07" value="${val||''}"></div>`;
+    }
     return `<div class="form-field"><label>${f.label}</label><input type="${f.type||'text'}" data-key="${f.key}" value="${val ?? ''}"></div>`;
   }).join('');
   c.querySelectorAll('[data-currency]').forEach(maskCurrencyInput);
@@ -523,6 +552,7 @@ function openModal(title, fields, values, onSave){
       if(f.type==='checkbox') out[f.key] = el.checked;
       else if(f.type==='currency') out[f.key] = getCurrencyValue(el);
       else if(f.type==='number') out[f.key] = parseFloat(el.value) || 0;
+      else if(f.type==='month') out[f.key] = el.value ? el.value + '-01' : null;
       else out[f.key] = el.value || null;
     });
     onSave(out);
@@ -559,26 +589,37 @@ document.getElementById('btn-logout').onclick = async () => { await db.auth.sign
 
 /* ==================== BOOTSTRAP ==================== */
 async function bootstrap(){
-  await Promise.all([loadMeses(), loadGrupos(), loadCategorias(), loadFontes()]);
-  if(state.meses.length === 0){
-    await criarMes(new Date().toISOString().slice(0,7)+'-01');
-    await loadMeses();
+  hideError();
+  try{
+    await Promise.all([loadMeses(), loadGrupos(), loadCategorias(), loadFontes()]);
+    if(state.meses.length === 0){
+      await criarMes(new Date().toISOString().slice(0,7)+'-01');
+      await loadMeses();
+    }
+    if(state.meses.length === 0){
+      throw new Error('Não consegui criar/ler o mês inicial. Confira se a migração SQL rodou sem erros e se a tabela "meses" tem a política de RLS para usuários autenticados.');
+    }
+    if(state.currentMesIdx < 0 || state.currentMesIdx >= state.meses.length){
+      state.currentMesIdx = state.meses.length - 1;
+    }
+    populateStaticSelects();
+    renderMonthNav();
+    toggleTopbar();
+    await renderCurrentPage();
+  } catch(e){
+    console.error(e);
+    showError(e.message || String(e));
   }
-  if(state.currentMesIdx < 0 || state.currentMesIdx >= state.meses.length){
-    state.currentMesIdx = state.meses.length - 1;
-  }
-  populateStaticSelects();
-  renderMonthNav();
-  await renderCurrentPage();
 }
-async function loadMeses(){ const { data } = await db.from('meses').select('*').order('referencia'); state.meses = data || []; }
-async function loadGrupos(){ const { data } = await db.from('grupos').select('*').order('ordem'); state.grupos = data || []; }
-async function loadCategorias(){ const { data } = await db.from('categorias').select('*').order('ordem'); state.categorias = data || []; }
-async function loadFontes(){ const { data } = await db.from('fontes_renda').select('*').eq('ativo', true).order('ordem'); state.fontes = data || []; }
+async function loadMeses(){ const { data, error } = await db.from('meses').select('*').order('referencia'); if(error) throw new Error('meses: ' + error.message); state.meses = data || []; }
+async function loadGrupos(){ const { data, error } = await db.from('grupos').select('*').order('ordem'); if(error) throw new Error('grupos: ' + error.message); state.grupos = data || []; }
+async function loadCategorias(){ const { data, error } = await db.from('categorias').select('*').order('ordem'); if(error) throw new Error('categorias: ' + error.message); state.categorias = data || []; }
+async function loadFontes(){ const { data, error } = await db.from('fontes_renda').select('*').eq('ativo', true).order('ordem'); if(error) throw new Error('fontes_renda: ' + error.message); state.fontes = data || []; }
 async function criarMes(referencia){
   const { data } = await db.from('meses').select('id').eq('referencia', referencia).maybeSingle();
   if(data) return;
-  await db.from('meses').insert({ referencia });
+  const { error } = await db.from('meses').insert({ referencia });
+  if(error) throw new Error('criar mês: ' + error.message);
 }
 async function ensureMesExists(referencia){
   let m = state.meses.find(x=>x.referencia===referencia);
@@ -591,8 +632,19 @@ async function ensureMesExists(referencia){
 /* ==================== MONTH NAV ==================== */
 function renderMonthNav(){
   const mes = currentMes();
-  document.getElementById('month-label').textContent = fmtMonth(mes.referencia);
+  if(!mes) return;
+  document.getElementById('month-input').value = mes.referencia.slice(0,7);
   document.getElementById('btn-prev-mes').disabled = state.currentMesIdx === 0;
+}
+document.getElementById('month-input').addEventListener('change', async (e) => {
+  const val = e.target.value;
+  if(!val) return;
+  const mes = await ensureMesExists(val + '-01');
+  state.currentMesIdx = state.meses.findIndex(m=>m.id===mes.id);
+  renderMonthNav(); await renderCurrentPage();
+});
+function toggleTopbar(){
+  document.getElementById('topbar-monthnav').style.display = activePage() === 'dashboard' ? 'flex' : 'none';
 }
 document.getElementById('btn-prev-mes').onclick = async () => {
   if(state.currentMesIdx > 0){ state.currentMesIdx--; renderMonthNav(); await renderCurrentPage(); }
@@ -610,6 +662,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(btn=>{
   btn.addEventListener('click', async () => {
     document.querySelectorAll('.nav-item[data-page]').forEach(b=>b.classList.toggle('active', b===btn));
     document.querySelectorAll('section.page').forEach(s=>s.hidden = s.id !== 'page-' + btn.dataset.page);
+    toggleTopbar();
     await renderCurrentPage();
   });
 });
@@ -623,17 +676,23 @@ document.querySelectorAll('.tab-btn[data-subtab]').forEach(btn=>{
 function activePage(){ return document.querySelector('.nav-item[data-page].active').dataset.page; }
 function activeSubtab(){ const b = document.querySelector('.tab-btn[data-subtab].active'); return b ? b.dataset.subtab : null; }
 async function renderCurrentPage(){
-  const page = activePage();
-  if(page === 'dashboard'){
-    const sub = activeSubtab();
-    if(sub === 'dashboard') await renderDashboard();
-    else if(sub === 'lancamentos') await renderLancamentos();
-    else if(sub === 'cartao') await renderCartao();
-  } else if(page === 'recorrentes') await renderRecorrentes();
-  else if(page === 'dividas') await renderDividas();
-  else if(page === 'orcamento') await renderOrcamento();
-  else if(page === 'relatorios') await renderRelatorios(true);
-  else if(page === 'config') renderConfig();
+  hideError();
+  try{
+    const page = activePage();
+    if(page === 'dashboard'){
+      const sub = activeSubtab();
+      if(sub === 'dashboard') await renderDashboard();
+      else if(sub === 'lancamentos') await renderLancamentos();
+      else if(sub === 'cartao') await renderCartao();
+    } else if(page === 'recorrentes') await renderRecorrentes();
+    else if(page === 'dividas') await renderDividas();
+    else if(page === 'orcamento') await renderOrcamento();
+    else if(page === 'relatorios') await renderRelatorios(true);
+    else if(page === 'config') renderConfig();
+  } catch(e){
+    console.error(e);
+    showError(e.message || String(e));
+  }
 }
 
 /* ==================== STATIC SELECTS ==================== */
@@ -656,18 +715,15 @@ function populateStaticSelects(){
   };
 
   document.getElementById('cartao-categoria').innerHTML = categoriaOptionsHtml();
-  document.getElementById('divida-categoria').innerHTML = categoriaOptionsHtml();
   document.getElementById('rec-categoria').innerHTML = categoriaOptionsHtml();
-  document.getElementById('categoria-grupo').innerHTML = state.grupos.map(g=>`<option value="${g.id}">${g.nome}</option>`).join('');
+  document.getElementById('categoria-grupo').innerHTML = [...state.grupos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).map(g=>`<option value="${g.id}">${g.nome}</option>`).join('');
+  document.getElementById('orc-categoria').innerHTML = categoriaOptionsHtml();
 
-  const mesOpts = state.meses.map(m=>`<option value="${m.id}">${fmtMonth(m.referencia)}</option>`).join('');
-  document.getElementById('divida-mes-inicio').innerHTML = mesOpts;
-  document.getElementById('rec-inicio').innerHTML = mesOpts;
-  document.getElementById('rec-fim').innerHTML = '<option value="">Sem término</option>' + mesOpts;
-  if(currentMes()){
-    document.getElementById('divida-mes-inicio').value = currentMes().id;
-    document.getElementById('rec-inicio').value = currentMes().id;
-  }
+  const defaultMonth = (state.meses[state.meses.length-1] || {referencia:'2026-07-01'}).referencia.slice(0,7);
+  ['divida-mes-inicio','rec-inicio','orc-vigencia'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && !el.value) el.value = defaultMonth;
+  });
 }
 function refreshCategoriaSelectSaida(){
   const grupoId = document.getElementById('saida-grupo').value;
@@ -745,7 +801,7 @@ async function renderMonthChart(totalEntradas, fixedDay1){
 
 async function renderOrcamentoComparativo(){
   const mes = currentMes();
-  const { data: orcamentos } = await db.from('orcamentos').select('*, categorias(nome)').eq('mes_id', mes.id).gt('valor_esperado', 0);
+  const { data: orcamentos } = await db.from('vw_orcamento_vigente_mes').select('*').eq('mes_id', mes.id).gt('valor_esperado', 0);
   const { data: consolidado } = await db.from('vw_saidas_consolidado').select('categoria_id,valor').eq('mes_id', mes.id);
   const gasto = {};
   (consolidado||[]).forEach(c=>{ if(c.categoria_id) gasto[c.categoria_id] = (gasto[c.categoria_id]||0) + Number(c.valor); });
@@ -754,8 +810,9 @@ async function renderOrcamentoComparativo(){
   el.innerHTML = orcamentos.map(o=>{
     const g = gasto[o.categoria_id] || 0;
     const pct = o.valor_esperado>0 ? (g/o.valor_esperado)*100 : 0;
+    const nome = state.categorias.find(c=>c.id===o.categoria_id)?.nome || '';
     return `<div class="orc-row">
-      <div class="orc-label">${o.categorias?.nome||''}</div>
+      <div class="orc-label">${nome}</div>
       <div class="orc-bar"><div class="orc-fill ${pct>100?'over':''}" style="width:${Math.min(100,pct)}%"></div></div>
       <div class="orc-values num">${fmtBRL(g)} / ${fmtBRL(o.valor_esperado)}</div>
     </div>`;
@@ -836,18 +893,19 @@ async function renderCartao(){
   document.getElementById('cartao-anterior-sub').textContent = isJuly ? 'Valor inicial travado manualmente' : 'Já fechada — entra no total deste mês';
   const { data: totalAnteriorRow } = await db.from('vw_cartao_fatura_total').select('total').eq('mes_id', mes.id).maybeSingle();
   document.getElementById('cartao-fatura-anterior').textContent = fmtBRL(totalAnteriorRow?.total || 0);
-  const { data: itensAnterior } = await db.from('vw_cartao_fatura_itens').select('*, categorias(nome)').eq('fatura_mes_id', mes.id);
+  const { data: itensAnterior } = await db.from('vw_cartao_fatura_itens').select('*').eq('fatura_mes_id', mes.id);
   document.getElementById('tbl-cartao-anterior').innerHTML = isJuly
     ? '<tr><td colspan="4" class="empty-state">Valor travado manualmente — sem itens detalhados.</td></tr>'
-    : (itensAnterior||[]).map(i=>`<tr><td>${i.descricao}</td><td>${i.categorias?.nome||''}</td><td class="num">${fmtBRL(i.valor)}</td><td>${i.origem==='recorrente'?'<span class="tag">Recorrente</span>':''}</td></tr>`).join('')
+    : (itensAnterior||[]).map(i=>`<tr><td>${i.descricao}</td><td>${state.categorias.find(c=>c.id===i.categoria_id)?.nome||''}</td><td class="num">${fmtBRL(i.valor)}</td><td>${i.origem==='recorrente'?'<span class="tag">Recorrente</span>':''}</td></tr>`).join('')
       || '<tr><td colspan="4" class="empty-state">Nenhum item nesta fatura.</td></tr>';
 
   const { data: totalProximaRow } = await db.from('vw_cartao_fatura_total').select('total').eq('mes_id', nextMes.id).maybeSingle();
   document.getElementById('cartao-proxima-total').textContent = fmtBRL(totalProximaRow?.total || 0);
-  const { data: itensProxima } = await db.from('vw_cartao_fatura_itens').select('*, categorias(nome)').eq('fatura_mes_id', nextMes.id);
+  const { data: itensProxima } = await db.from('vw_cartao_fatura_itens').select('*').eq('fatura_mes_id', nextMes.id);
   document.getElementById('tbl-cartao-proxima').innerHTML = (itensProxima||[]).map(i=>{
+    const catNome = state.categorias.find(c=>c.id===i.categoria_id)?.nome || '';
     if(i.origem === 'recorrente'){
-      return `<tr><td>${i.descricao}</td><td>${i.categorias?.nome||''}</td><td class="num">${fmtBRL(i.valor)}</td><td><span class="tag">Recorrente</span></td></tr>`;
+      return `<tr><td>${i.descricao}</td><td>${catNome}</td><td class="num">${fmtBRL(i.valor)}</td><td><span class="tag">Recorrente</span></td></tr>`;
     }
     const key = registerEdit('cartao_lancamentos', i.origem_id, 'Editar lançamento de cartão', [
       {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
@@ -855,7 +913,7 @@ async function renderCartao(){
       {key:'valor_parcela', label:'Valor da parcela', type:'currency'},
       {key:'total_parcelas', label:'Total de parcelas', type:'number'},
     ], { categoria_id: i.categoria_id, descricao: i.descricao.replace(/\s\(\d+\/\d+\)$/,''), valor_parcela: i.valor, total_parcelas: 1 });
-    return `<tr><td>${i.descricao}</td><td>${i.categorias?.nome||''}</td><td class="num">${fmtBRL(i.valor)}</td>
+    return `<tr><td>${i.descricao}</td><td>${catNome}</td><td class="num">${fmtBRL(i.valor)}</td>
       <td class="row-actions">${editBtn(key)}${delBtn('cartao_lancamentos', i.origem_id)}</td></tr>`;
   }).join('') || '<tr><td colspan="4" class="empty-state">Nenhum item lançado ainda.</td></tr>';
 }
@@ -882,10 +940,10 @@ async function renderRecorrentes(){
       {key:'nome', label:'Nome', type:'text'},
       {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
       {key:'valor', label:'Valor', type:'currency'},
-      {key:'mes_inicio_id', label:'Mês de início', type:'select', options: state.meses.map(m=>({value:m.id,label:fmtMonth(m.referencia)}))},
-      {key:'mes_fim_id', label:'Mês de término', type:'select', options: [{value:'',label:'Sem término'}, ...state.meses.map(m=>({value:m.id,label:fmtMonth(m.referencia)}))]},
+      {key:'mes_inicio_id', label:'Mês de início', type:'month'},
+      {key:'mes_fim_id', label:'Mês de término', type:'month'},
       {key:'ativo', label:'Ativo', type:'checkbox'},
-    ], { nome:r.nome, categoria_id:r.categoria_id, valor:r.valor, mes_inicio_id:r.mes_inicio_id, mes_fim_id:r.mes_fim_id||'', ativo:r.ativo });
+    ], { nome:r.nome, categoria_id:r.categoria_id, valor:r.valor, mes_inicio_id:(mesRefById[r.mes_inicio_id]||'').slice(0,7), mes_fim_id:r.mes_fim_id?(mesRefById[r.mes_fim_id]||'').slice(0,7):'', ativo:r.ativo }, ['mes_inicio_id','mes_fim_id']);
     return `<tr><td>${r.nome}</td><td>${r.categorias?.nome||''}</td><td class="num">${fmtBRL(r.valor)}</td>
       <td>${fmtMonth(mesRefById[r.mes_inicio_id]||'')}</td><td>${r.mes_fim_id? fmtMonth(mesRefById[r.mes_fim_id]) : '—'}</td>
       <td><span class="tag ${r.ativo?'pos':''}">${r.ativo?'Ativa':'Inativa'}</span></td>
@@ -896,18 +954,20 @@ document.getElementById('btn-add-rec').onclick = async () => {
   const nome = document.getElementById('rec-nome').value.trim();
   const categoria_id = document.getElementById('rec-categoria').value || null;
   const valor = getCurrencyValue(document.getElementById('rec-valor'));
-  const mes_inicio_id = document.getElementById('rec-inicio').value;
-  const mes_fim_id = document.getElementById('rec-fim').value || null;
-  if(!nome || !valor || !mes_inicio_id){ toast('Preencha nome, valor e mês de início.'); return; }
-  await db.from('recorrentes').insert({ nome, categoria_id, valor, mes_inicio_id, mes_fim_id, ativo: true });
-  document.getElementById('rec-nome').value = ''; document.getElementById('rec-valor').value = '';
+  const inicioVal = document.getElementById('rec-inicio').value;
+  const fimVal = document.getElementById('rec-fim').value;
+  if(!nome || !valor || !inicioVal){ toast('Preencha nome, valor e mês de início.'); return; }
+  const mesInicio = await ensureMesExists(inicioVal + '-01');
+  const mesFim = fimVal ? await ensureMesExists(fimVal + '-01') : null;
+  await db.from('recorrentes').insert({ nome, categoria_id, valor, mes_inicio_id: mesInicio.id, mes_fim_id: mesFim ? mesFim.id : null, ativo: true });
+  document.getElementById('rec-nome').value = ''; document.getElementById('rec-valor').value = ''; document.getElementById('rec-fim').value = '';
   renderRecorrentes();
 };
 
 /* ---------- DÍVIDAS ---------- */
 async function renderDividas(){
   const mes = currentMes();
-  const { data: dividas } = await db.from('dividas').select('*, categorias(nome)').order('created_at');
+  const { data: dividas } = await db.from('dividas').select('*').order('created_at');
   const { data: ativasNoMes } = await db.from('vw_dividas_mes').select('*').eq('mes_id', mes.id);
   const ativasMap = {}; (ativasNoMes||[]).forEach(a=>{ if(a.parcela_atual) ativasMap[a.divida_id] = a; });
   const mesesById = {}; state.meses.forEach(m=>mesesById[m.id]=m);
@@ -924,18 +984,17 @@ async function renderDividas(){
     }
     const key = registerEdit('dividas', d.id, 'Editar dívida', [
       {key:'nome', label:'Nome', type:'text'},
-      {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
       {key:'valor_parcela', label:'Valor da parcela', type:'currency'},
       {key:'total_parcelas', label:'Total de parcelas', type:'number'},
       {key:'entrada', label:'Entrada', type:'currency'},
-      {key:'mes_inicio_id', label:'Mês de início', type:'select', options: state.meses.map(m=>({value:m.id,label:fmtMonth(m.referencia)}))},
+      {key:'mes_inicio_id', label:'Mês de início', type:'month'},
       {key:'quitada', label:'Quitada antecipadamente', type:'checkbox'},
-    ], { nome:d.nome, categoria_id:d.categoria_id, valor_parcela:d.valor_parcela, total_parcelas:d.total_parcelas, entrada:d.entrada, mes_inicio_id:d.mes_inicio_id, quitada:d.quitada });
+    ], { nome:d.nome, valor_parcela:d.valor_parcela, total_parcelas:d.total_parcelas, entrada:d.entrada, mes_inicio_id:(mesesById[d.mes_inicio_id]?.referencia||'').slice(0,7), quitada:d.quitada }, ['mes_inicio_id']);
     const quitarBtn = !d.quitada ? `<button class="icon-btn" title="Marcar como quitada" onclick="quitarDivida('${d.id}')">✓</button>` : '';
-    return `<tr><td>${d.nome}</td><td>${d.categorias?.nome||''}</td><td class="num">${parcelaTxt}</td>
+    return `<tr><td>${d.nome}</td><td class="num">${parcelaTxt}</td>
       <td class="num">${fmtBRL(d.valor_parcela)}</td><td class="num">${fmtBRL(d.entrada)}</td><td>${status}</td>
       <td class="row-actions">${quitarBtn}${editBtn(key)}${delBtn('dividas', d.id)}</td></tr>`;
-  }).join('') || '<tr><td colspan="7" class="empty-state">Nenhuma dívida cadastrada.</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty-state">Nenhuma dívida cadastrada.</td></tr>';
 }
 async function quitarDivida(id){
   if(!confirm('Marcar esta dívida como quitada? As parcelas futuras deixarão de aparecer.')) return;
@@ -945,15 +1004,14 @@ async function quitarDivida(id){
 window.quitarDivida = quitarDivida;
 document.getElementById('btn-add-divida').onclick = async () => {
   const nome = document.getElementById('divida-nome').value.trim();
-  const categoria_id = document.getElementById('divida-categoria').value || null;
   const valor_parcela = getCurrencyValue(document.getElementById('divida-valor'));
   const total_parcelas = parseInt(document.getElementById('divida-total').value) || 1;
   const entrada = getCurrencyValue(document.getElementById('divida-entrada'));
-  const mes_inicio_id = document.getElementById('divida-mes-inicio').value;
-  if(!nome || !valor_parcela || !mes_inicio_id){ toast('Preencha nome, valor e mês de início.'); return; }
-  await db.from('dividas').insert({ nome, categoria_id, valor_parcela, total_parcelas, entrada, mes_inicio_id });
-  const mesInicio = state.meses.find(m=>m.id===mes_inicio_id);
-  if(mesInicio) await ensureMesExists(addMonths(mesInicio.referencia, total_parcelas-1));
+  const mesInicioVal = document.getElementById('divida-mes-inicio').value;
+  if(!nome || !valor_parcela || !mesInicioVal){ toast('Preencha nome, valor e mês de início.'); return; }
+  const mesInicio = await ensureMesExists(mesInicioVal + '-01');
+  await db.from('dividas').insert({ nome, valor_parcela, total_parcelas, entrada, mes_inicio_id: mesInicio.id });
+  await ensureMesExists(addMonths(mesInicio.referencia, total_parcelas-1));
   document.getElementById('divida-nome').value=''; document.getElementById('divida-valor').value='';
   document.getElementById('divida-entrada').value=''; document.getElementById('divida-total').value='1';
   renderDividas();
@@ -961,35 +1019,30 @@ document.getElementById('btn-add-divida').onclick = async () => {
 
 /* ---------- ORÇAMENTO ---------- */
 async function renderOrcamento(){
-  const mes = currentMes();
-  const { data: orcamentos } = await db.from('orcamentos').select('*').eq('mes_id', mes.id);
-  const byCat = {}; (orcamentos||[]).forEach(o=>byCat[o.categoria_id]=o.valor_esperado);
-  const el = document.getElementById('orcamento-form');
-  el.innerHTML = state.grupos.map(g=>{
-    const cats = state.categorias.filter(c=>c.grupo_id===g.id);
-    if(cats.length===0) return '';
-    return `<div class="orc-group-title">${g.nome}</div>` + cats.map(c=>`
-      <div class="orc-cat-row">
-        <label>${c.nome}</label>
-        <input type="text" data-cat="${c.id}" class="orc-input" placeholder="R$ 0,00" value="${byCat[c.id]?fmtBRL(byCat[c.id]):''}">
-      </div>`).join('');
-  }).join('');
-  el.querySelectorAll('.orc-input').forEach(inp=>{
-    maskCurrencyInput(inp);
-    inp.addEventListener('blur', async () => {
-      const valor_esperado = getCurrencyValue(inp);
-      await db.from('orcamentos').upsert({ mes_id: mes.id, categoria_id: inp.dataset.cat, valor_esperado }, { onConflict: 'mes_id,categoria_id' });
-    });
-  });
+  const { data } = await db.from('orcamentos').select('*, categorias(nome), meses(referencia)').order('created_at', {ascending:false});
+  const rows = (data||[]).sort((a,b)=>
+    (a.categorias?.nome||'').localeCompare(b.categorias?.nome||'') ||
+    (b.meses?.referencia||'').localeCompare(a.meses?.referencia||'')
+  );
+  document.getElementById('tbl-orcamento').innerHTML = rows.map(o=>{
+    const key = registerEdit('orcamentos', o.id, 'Editar orçamento', [
+      {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
+      {key:'valor_esperado', label:'Valor esperado', type:'currency'},
+      {key:'mes_vigencia_id', label:'Vigente a partir de', type:'month'},
+    ], { categoria_id:o.categoria_id, valor_esperado:o.valor_esperado, mes_vigencia_id:(o.meses?.referencia||'').slice(0,7) }, ['mes_vigencia_id']);
+    return `<tr><td>${o.categorias?.nome||''}</td><td class="num">${fmtBRL(o.valor_esperado)}</td><td>${fmtMonth(o.meses?.referencia||'')}</td>
+      <td class="row-actions">${editBtn(key)}${delBtn('orcamentos', o.id)}</td></tr>`;
+  }).join('') || '<tr><td colspan="4" class="empty-state">Nenhum orçamento definido ainda.</td></tr>';
 }
-document.getElementById('btn-copiar-orcamento').onclick = async () => {
-  if(state.currentMesIdx === 0){ toast('Não há mês anterior.'); return; }
-  const anterior = state.meses[state.currentMesIdx-1];
-  const { data } = await db.from('orcamentos').select('*').eq('mes_id', anterior.id);
-  if(!data || data.length===0){ toast('Mês anterior não tem orçamento definido.'); return; }
-  const rows = data.map(o=>({ mes_id: currentMes().id, categoria_id: o.categoria_id, valor_esperado: o.valor_esperado }));
-  await db.from('orcamentos').upsert(rows, { onConflict: 'mes_id,categoria_id' });
-  toast('Orçamento copiado.'); renderOrcamento();
+document.getElementById('btn-add-orc').onclick = async () => {
+  const categoria_id = document.getElementById('orc-categoria').value;
+  const valor_esperado = getCurrencyValue(document.getElementById('orc-valor'));
+  const vigenciaVal = document.getElementById('orc-vigencia').value;
+  if(!categoria_id || !valor_esperado || !vigenciaVal){ toast('Preencha categoria, valor e mês de vigência.'); return; }
+  const mes = await ensureMesExists(vigenciaVal + '-01');
+  await db.from('orcamentos').insert({ categoria_id, valor_esperado, mes_vigencia_id: mes.id });
+  document.getElementById('orc-valor').value = '';
+  renderOrcamento();
 };
 
 /* ---------- RELATÓRIOS ---------- */
@@ -1056,18 +1109,22 @@ async function renderRelatorios(first){
 
 /* ---------- CONFIGURAÇÕES ---------- */
 function renderConfig(){
-  document.getElementById('tbl-grupos').innerHTML = state.grupos.map(g=>{
+  const grupos = [...state.grupos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const categorias = [...state.categorias].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const fontes = [...state.fontes].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+
+  document.getElementById('tbl-grupos').innerHTML = grupos.map(g=>{
     const key = registerEdit('grupos', g.id, 'Editar grupo', [{key:'nome',label:'Nome',type:'text'}], {nome:g.nome});
     return `<tr><td>${g.nome}</td><td class="row-actions">${editBtn(key)}${delBtn('grupos', g.id)}</td></tr>`;
   }).join('');
-  document.getElementById('tbl-categorias').innerHTML = state.categorias.map(c=>{
+  document.getElementById('tbl-categorias').innerHTML = categorias.map(c=>{
     const key = registerEdit('categorias', c.id, 'Editar categoria', [
       {key:'nome',label:'Nome',type:'text'},
-      {key:'grupo_id',label:'Grupo',type:'select', options: state.grupos.map(g=>({value:g.id,label:g.nome}))},
+      {key:'grupo_id',label:'Grupo',type:'select', options: grupos.map(g=>({value:g.id,label:g.nome}))},
     ], {nome:c.nome, grupo_id:c.grupo_id});
     return `<tr><td>${c.nome}</td><td>${state.grupos.find(g=>g.id===c.grupo_id)?.nome||''}</td><td class="row-actions">${editBtn(key)}${delBtn('categorias', c.id)}</td></tr>`;
   }).join('');
-  document.getElementById('tbl-fontes').innerHTML = state.fontes.map(f=>{
+  document.getElementById('tbl-fontes').innerHTML = fontes.map(f=>{
     const key = registerEdit('fontes_renda', f.id, 'Editar fonte', [
       {key:'nome',label:'Nome',type:'text'}, {key:'valor_padrao',label:'Valor padrão',type:'currency'},
     ], {nome:f.nome, valor_padrao:f.valor_padrao});
