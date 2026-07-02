@@ -115,7 +115,11 @@
   }
   .form-field input:disabled{color:var(--ink-faint);}
   .form-field.checkbox-field{flex-direction:row;align-items:center;gap:8px;flex:0 0 auto;width:auto;padding-bottom:8px;}
-  .form-field.checkbox-field label{font-size:12px;color:var(--ink);}
+  .form-field.checkbox-field label{font-size:12px;color:var(--ink);white-space:nowrap;}
+  .form-field.checkbox-field input[type=checkbox]{
+    width:18px;height:18px;padding:0;border:1px solid var(--border);background:var(--surface-alt);
+    border-radius:4px;cursor:pointer;accent-color:var(--ink);flex:0 0 auto;
+  }
 
   .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);}
   .tab-btn{background:none;border:none;padding:10px 4px;margin-right:20px;font-size:13px;color:var(--ink-soft);cursor:pointer;border-bottom:2px solid transparent;}
@@ -443,7 +447,13 @@
           <table><thead><tr><th>Nome</th><th></th></tr></thead><tbody id="tbl-grupos"></tbody></table>
         </div>
         <div class="panel">
-          <div class="panel-head"><div class="panel-title">Categorias</div></div>
+          <div class="panel-head">
+            <div class="panel-title">Categorias</div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-ghost btn-sm" id="btn-ordenar-por-categoria">Ordenar por categoria</button>
+              <button class="btn btn-ghost btn-sm" id="btn-ordenar-por-grupo">Ordenar por grupo</button>
+            </div>
+          </div>
           <div class="form-row">
             <div class="form-field"><label>Grupo</label><select id="categoria-grupo"></select></div>
             <div class="form-field"><label>Nome</label><input id="categoria-nome"></div>
@@ -485,7 +495,7 @@ const SUPABASE_KEY = 'sb_publishable_T8LDo65Z5-zFFgVkLBQtSQ_mSwGvkG9';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ==================== STATE ==================== */
-let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {} };
+let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {}, configCategoriaSort: 'categoria' };
 let editRegistry = {}; let editCounter = 0;
 
 const fmtBRL = v => (Number(v) || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
@@ -515,6 +525,8 @@ function readMonthYear(root, key){
   return `${anoEl.value}-${mesEl.value}-01`;
 }
 function clampMinMonth(ref){ return ref < '2026-07-01' ? '2026-07-01' : ref; }
+function sortedGrupos(){ return [...state.grupos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')); }
+function sortedCategorias(){ return [...state.categorias].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')); }
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -745,13 +757,13 @@ async function renderCurrentPage(){
 
 /* ==================== STATIC SELECTS ==================== */
 function categoriaOptionsHtml(){
-  return state.grupos.map(g=>{
-    const cats = state.categorias.filter(c=>c.grupo_id===g.id);
+  return sortedGrupos().map(g=>{
+    const cats = sortedCategorias().filter(c=>c.grupo_id===g.id);
     return `<optgroup label="${g.nome}">${cats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')}</optgroup>`;
   }).join('');
 }
 function populateStaticSelects(){
-  document.getElementById('saida-grupo').innerHTML = state.grupos.map(g=>`<option value="${g.id}">${g.nome}</option>`).join('');
+  document.getElementById('saida-grupo').innerHTML = sortedGrupos().map(g=>`<option value="${g.id}">${g.nome}</option>`).join('');
   refreshCategoriaSelectSaida();
   document.getElementById('saida-grupo').onchange = refreshCategoriaSelectSaida;
 
@@ -776,7 +788,7 @@ function populateStaticSelects(){
 function refreshCategoriaSelectSaida(){
   const grupoId = document.getElementById('saida-grupo').value;
   const grupo = state.grupos.find(g=>g.id===grupoId);
-  const cats = state.categorias.filter(c=>c.grupo_id===grupoId);
+  const cats = sortedCategorias().filter(c=>c.grupo_id===grupoId);
   const catSel = document.getElementById('saida-categoria');
   catSel.innerHTML = cats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
   const isOutros = grupo && grupo.nome === 'Outros';
@@ -888,8 +900,8 @@ async function renderLancamentos(){
   const { data: saidas } = await db.from('saidas').select('*, grupos(nome), categorias(nome)').eq('mes_id', mes.id).order('data');
   document.getElementById('tbl-saidas').innerHTML = (saidas||[]).map(s=>{
     const key = registerEdit('saidas', s.id, 'Editar saída', [
-      {key:'grupo_id', label:'Grupo', type:'select', options: state.grupos.map(g=>({value:g.id,label:g.nome}))},
-      {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
+      {key:'grupo_id', label:'Grupo', type:'select', options: sortedGrupos().map(g=>({value:g.id,label:g.nome}))},
+      {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
       {key:'data', label:'Data', type:'date'},
       {key:'descricao', label:'Descrição', type:'text'},
       {key:'valor', label:'Valor', type:'currency'},
@@ -959,7 +971,7 @@ async function renderCartao(){
       return `<tr><td>${i.descricao}</td><td>${catNome}</td><td class="num">${fmtBRL(i.valor)}</td><td><span class="tag">Recorrente</span></td></tr>`;
     }
     const key = registerEdit('cartao_lancamentos', i.origem_id, 'Editar lançamento de cartão', [
-      {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
+      {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
       {key:'descricao', label:'Descrição', type:'text'},
       {key:'valor_parcela', label:'Valor da parcela', type:'currency'},
       {key:'total_parcelas', label:'Total de parcelas', type:'number'},
@@ -1032,7 +1044,7 @@ async function renderRecorrentes(){
   document.getElementById('tbl-recorrentes').innerHTML = (data||[]).map(r=>{
     const key = registerEdit('recorrentes', r.id, 'Editar recorrente', [
       {key:'nome', label:'Nome', type:'text'},
-      {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
+      {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
       {key:'valor', label:'Valor', type:'currency'},
       {key:'mes_inicio_id', label:'Mês de início', type:'month'},
       {key:'mes_fim_id', label:'Mês de término', type:'month'},
@@ -1124,7 +1136,7 @@ async function renderOrcamento(){
   );
   document.getElementById('tbl-orcamento').innerHTML = rows.map(o=>{
     const key = registerEdit('orcamentos', o.id, 'Editar orçamento', [
-      {key:'categoria_id', label:'Categoria', type:'select', options: state.categorias.map(c=>({value:c.id,label:c.nome}))},
+      {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
       {key:'valor_esperado', label:'Valor esperado', type:'currency'},
       {key:'tipo', label:'Tipo', type:'select', options:[{value:'variavel',label:'Variável'},{value:'fixo',label:'Fixo'}]},
       {key:'mes_vigencia_id', label:'Vigente a partir de', type:'month'},
@@ -1212,6 +1224,10 @@ async function renderRelatorios(first){
 
 /* ---------- CONFIGURAÇÕES ---------- */
 function renderConfig(){
+  document.getElementById('btn-ordenar-por-categoria').classList.toggle('btn-primary', state.configCategoriaSort==='categoria');
+  document.getElementById('btn-ordenar-por-categoria').classList.toggle('btn-ghost', state.configCategoriaSort!=='categoria');
+  document.getElementById('btn-ordenar-por-grupo').classList.toggle('btn-primary', state.configCategoriaSort==='grupo');
+  document.getElementById('btn-ordenar-por-grupo').classList.toggle('btn-ghost', state.configCategoriaSort!=='grupo');
   const grupos = [...state.grupos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
   const categorias = [...state.categorias].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
   const fontes = [...state.fontes].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
@@ -1220,7 +1236,14 @@ function renderConfig(){
     const key = registerEdit('grupos', g.id, 'Editar grupo', [{key:'nome',label:'Nome',type:'text'}], {nome:g.nome});
     return `<tr><td>${g.nome}</td><td class="row-actions">${editBtn(key)}${delBtn('grupos', g.id)}</td></tr>`;
   }).join('');
-  document.getElementById('tbl-categorias').innerHTML = categorias.map(c=>{
+  document.getElementById('tbl-categorias').innerHTML = [...categorias].sort((a,b)=>{
+    if(state.configCategoriaSort === 'grupo'){
+      const ga = state.grupos.find(g=>g.id===a.grupo_id)?.nome || '';
+      const gb = state.grupos.find(g=>g.id===b.grupo_id)?.nome || '';
+      return ga.localeCompare(gb,'pt-BR') || a.nome.localeCompare(b.nome,'pt-BR');
+    }
+    return a.nome.localeCompare(b.nome,'pt-BR');
+  }).map(c=>{
     const key = registerEdit('categorias', c.id, 'Editar categoria', [
       {key:'nome',label:'Nome',type:'text'},
       {key:'grupo_id',label:'Grupo',type:'select', options: grupos.map(g=>({value:g.id,label:g.nome}))},
@@ -1234,6 +1257,8 @@ function renderConfig(){
     return `<tr><td>${f.nome}</td><td class="num">${fmtBRL(f.valor_padrao)}</td><td class="row-actions">${editBtn(key)}${delBtn('fontes_renda', f.id)}</td></tr>`;
   }).join('');
 }
+document.getElementById('btn-ordenar-por-categoria').onclick = () => { state.configCategoriaSort = 'categoria'; renderConfig(); };
+document.getElementById('btn-ordenar-por-grupo').onclick = () => { state.configCategoriaSort = 'grupo'; renderConfig(); };
 document.getElementById('btn-add-grupo').onclick = async () => {
   const nome = document.getElementById('grupo-nome').value.trim();
   if(!nome){ toast('Informe o nome.'); return; }
