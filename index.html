@@ -1258,7 +1258,7 @@ async function deleteRow(table, id){
 window.deleteRow = deleteRow;
 
 /* ==================== INIT ==================== */
-['entrada-valor','saida-valor','cartao-valor','divida-valor','divida-entrada','fonte-valor'].forEach(id=>{
+['entrada-valor','saida-valor','cartao-valor','divida-valor','divida-entrada','fonte-valor','orc-valor'].forEach(id=>{
   const el = document.getElementById(id); if(el) maskCurrencyInput(el);
 });
 document.getElementById('rec-valor') && maskCurrencyInput(document.getElementById('rec-valor'));
