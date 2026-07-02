@@ -987,7 +987,7 @@ document.getElementById('btn-add-cartao').onclick = async () => {
 async function renderChecklist(){
   const mes = currentMes();
   const [{data:orcs}, {data:dividasMes}, {data:confirmados}] = await Promise.all([
-    db.from('vw_orcamento_vigente_mes').select('*').eq('mes_id', mes.id),
+    db.from('vw_orcamento_vigente_mes').select('*').eq('mes_id', mes.id).eq('tipo','fixo'),
     db.from('vw_dividas_mes').select('*').eq('mes_id', mes.id),
     db.from('checklist_confirmacoes').select('*').eq('mes_id', mes.id),
   ]);
