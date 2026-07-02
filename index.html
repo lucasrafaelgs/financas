@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
@@ -786,6 +786,7 @@ async function renderMonthChart(totalEntradas, fixedDay1){
     saldoLinha.push(totalEntradas - running);
   }
   const ctx = document.getElementById('chart-mes');
+  if(typeof Chart === 'undefined'){ ctx.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'})); return; }
   if(state.charts.mes) state.charts.mes.destroy();
   state.charts.mes = new Chart(ctx, {
     type: 'line',
@@ -1094,6 +1095,7 @@ async function renderRelatorios(first){
   }
 
   const c1 = document.getElementById('chart-relatorio-fluxo');
+  if(typeof Chart === 'undefined'){ document.querySelectorAll('#chart-relatorio-fluxo, #chart-relatorio-divida').forEach(c=>c.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'}))); return; }
   if(state.charts.fluxo) state.charts.fluxo.destroy();
   state.charts.fluxo = new Chart(c1, { type:'bar', data:{ labels, datasets:[
     { label:'Entradas', data: entradasArr, backgroundColor:'#8c8b8630' },
