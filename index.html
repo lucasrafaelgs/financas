@@ -60,11 +60,12 @@
   .month-nav button:hover:not(:disabled){border-color:var(--ink);}
   .month-nav button:disabled{opacity:.25;cursor:not-allowed;}
   .month-label{font-size:19px;font-weight:700;min-width:190px;text-align:center;}
-  .month-input{
-    font-size:19px;font-weight:700;text-align:center;color:var(--ink);
-    background:transparent;border:none;padding:4px 8px;border-radius:var(--radius-sm);cursor:pointer;
-  }
-  .month-input:hover{background:var(--surface);}
+  .month-pair{display:flex;gap:6px;}
+  .month-pair select{flex:1;padding:0 8px;height:36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-alt);font-family:inherit;font-size:14px;}
+  .month-pair .my-mes{flex:1.3;}
+  .month-pair.topbar-style{gap:2px;}
+  .month-pair.topbar-style select{border:none;background:transparent;font-size:17px;font-weight:700;color:var(--ink);text-align:center;cursor:pointer;height:auto;padding:6px 4px;border-radius:var(--radius-sm);}
+  .month-pair.topbar-style select:hover{background:var(--surface);}
   .month-status{font-size:11px;color:var(--ink-soft);text-align:center;margin-top:1px;}
   .page-title{font-size:19px;font-weight:700;margin-bottom:22px;}
 
@@ -199,7 +200,7 @@
     <div class="topbar" id="topbar-monthnav">
       <div class="month-nav">
         <button id="btn-prev-mes">&larr;</button>
-        <input type="month" id="month-input" class="month-input" min="2026-07">
+        <div id="month-input-wrap" class="month-pair topbar-style"></div>
         <button id="btn-next-mes">&rarr;</button>
       </div>
     </div>
@@ -333,8 +334,8 @@
           <div class="form-field"><label>Nome</label><input id="rec-nome" placeholder="Ex: Netflix"></div>
           <div class="form-field"><label>Categoria</label><select id="rec-categoria"></select></div>
           <div class="form-field"><label>Valor</label><input id="rec-valor" type="text" placeholder="R$ 0,00"></div>
-          <div class="form-field"><label>Mês de início</label><input type="month" id="rec-inicio" min="2026-07"></div>
-          <div class="form-field"><label>Mês de término</label><input type="month" id="rec-fim" min="2026-07" placeholder="Sem término"></div>
+          <div class="form-field"><label>Mês de início</label><div id="rec-inicio-wrap" class="month-pair"></div></div>
+          <div class="form-field"><label>Mês de término</label><div id="rec-fim-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-rec">Adicionar</button>
         </div>
         <table>
@@ -354,7 +355,7 @@
           <div class="form-field"><label>Valor da parcela</label><input id="divida-valor" type="text" placeholder="R$ 0,00"></div>
           <div class="form-field"><label>Total de parcelas</label><input id="divida-total" type="number" min="1" value="1"></div>
           <div class="form-field"><label>Entrada (opcional)</label><input id="divida-entrada" type="text" placeholder="R$ 0,00"></div>
-          <div class="form-field"><label>Mês de início</label><input type="month" id="divida-mes-inicio" min="2026-07"></div>
+          <div class="form-field"><label>Mês de início</label><div id="divida-mes-inicio-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-divida">Adicionar</button>
         </div>
         <table>
@@ -377,7 +378,7 @@
         <div class="form-row">
           <div class="form-field"><label>Categoria</label><select id="orc-categoria"></select></div>
           <div class="form-field"><label>Valor esperado</label><input id="orc-valor" type="text" placeholder="R$ 0,00"></div>
-          <div class="form-field"><label>Vigente a partir de</label><input type="month" id="orc-vigencia" min="2026-07"></div>
+          <div class="form-field"><label>Vigente a partir de</label><div id="orc-vigencia-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-orc">Adicionar</button>
         </div>
         <table>
@@ -475,6 +476,22 @@ function addMonths(ref, n){
   d.setMonth(d.getMonth() + n);
   return d.toISOString().slice(0,10).replace(/-\d\d$/, '-01');
 }
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function monthYearHtml(key, value, allowEmpty){
+  const [vy, vm] = value ? value.split('-') : ['', ''];
+  let mesOpts = allowEmpty ? '<option value="">Mês</option>' : '';
+  mesOpts += MESES_PT.map((m,i)=>{ const mm = String(i+1).padStart(2,'0'); return `<option value="${mm}" ${mm===vm?'selected':''}>${m}</option>`; }).join('');
+  let anoOpts = allowEmpty ? '<option value="">Ano</option>' : '';
+  for(let y=2026; y<=2040; y++){ anoOpts += `<option value="${y}" ${String(y)===vy?'selected':''}>${y}</option>`; }
+  return `<select data-key="${key}-mes" class="my-mes">${mesOpts}</select><select data-key="${key}-ano" class="my-ano">${anoOpts}</select>`;
+}
+function readMonthYear(root, key){
+  const mesEl = root.querySelector(`[data-key="${key}-mes"]`);
+  const anoEl = root.querySelector(`[data-key="${key}-ano"]`);
+  if(!mesEl || !anoEl || !mesEl.value || !anoEl.value) return null;
+  return `${anoEl.value}-${mesEl.value}-01`;
+}
+function clampMinMonth(ref){ return ref < '2026-07-01' ? '2026-07-01' : ref; }
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -539,7 +556,7 @@ function openModal(title, fields, values, onSave){
       return `<div class="form-field"><label>${f.label}</label><input type="date" data-key="${f.key}" value="${val||''}"></div>`;
     }
     if(f.type === 'month'){
-      return `<div class="form-field"><label>${f.label}</label><input type="month" data-key="${f.key}" min="2026-07" value="${val||''}"></div>`;
+      return `<div class="form-field"><label>${f.label}</label><div class="month-pair" data-monthwrap="${f.key}">${monthYearHtml(f.key, val, true)}</div></div>`;
     }
     return `<div class="form-field"><label>${f.label}</label><input type="${f.type||'text'}" data-key="${f.key}" value="${val ?? ''}"></div>`;
   }).join('');
@@ -552,7 +569,7 @@ function openModal(title, fields, values, onSave){
       if(f.type==='checkbox') out[f.key] = el.checked;
       else if(f.type==='currency') out[f.key] = getCurrencyValue(el);
       else if(f.type==='number') out[f.key] = parseFloat(el.value) || 0;
-      else if(f.type==='month') out[f.key] = el.value ? el.value + '-01' : null;
+      else if(f.type==='month') out[f.key] = readMonthYear(c, f.key) ? clampMinMonth(readMonthYear(c, f.key)) : null;
       else out[f.key] = el.value || null;
     });
     onSave(out);
@@ -633,13 +650,14 @@ async function ensureMesExists(referencia){
 function renderMonthNav(){
   const mes = currentMes();
   if(!mes) return;
-  document.getElementById('month-input').value = mes.referencia.slice(0,7);
+  document.getElementById('month-input-wrap').innerHTML = monthYearHtml('month-input', mes.referencia.slice(0,7));
   document.getElementById('btn-prev-mes').disabled = state.currentMesIdx === 0;
 }
-document.getElementById('month-input').addEventListener('change', async (e) => {
-  const val = e.target.value;
-  if(!val) return;
-  const mes = await ensureMesExists(val + '-01');
+document.getElementById('month-input-wrap').addEventListener('change', async () => {
+  let ref = readMonthYear(document.getElementById('month-input-wrap'), 'month-input');
+  if(!ref) return;
+  ref = clampMinMonth(ref);
+  const mes = await ensureMesExists(ref);
   state.currentMesIdx = state.meses.findIndex(m=>m.id===mes.id);
   renderMonthNav(); await renderCurrentPage();
 });
@@ -720,10 +738,10 @@ function populateStaticSelects(){
   document.getElementById('orc-categoria').innerHTML = categoriaOptionsHtml();
 
   const defaultMonth = (state.meses[state.meses.length-1] || {referencia:'2026-07-01'}).referencia.slice(0,7);
-  ['divida-mes-inicio','rec-inicio','orc-vigencia'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el && !el.value) el.value = defaultMonth;
-  });
+  document.getElementById('divida-mes-inicio-wrap').innerHTML = monthYearHtml('divida-mes-inicio', defaultMonth);
+  document.getElementById('rec-inicio-wrap').innerHTML = monthYearHtml('rec-inicio', defaultMonth);
+  document.getElementById('rec-fim-wrap').innerHTML = monthYearHtml('rec-fim', '', true);
+  document.getElementById('orc-vigencia-wrap').innerHTML = monthYearHtml('orc-vigencia', defaultMonth);
 }
 function refreshCategoriaSelectSaida(){
   const grupoId = document.getElementById('saida-grupo').value;
@@ -955,13 +973,14 @@ document.getElementById('btn-add-rec').onclick = async () => {
   const nome = document.getElementById('rec-nome').value.trim();
   const categoria_id = document.getElementById('rec-categoria').value || null;
   const valor = getCurrencyValue(document.getElementById('rec-valor'));
-  const inicioVal = document.getElementById('rec-inicio').value;
-  const fimVal = document.getElementById('rec-fim').value;
+  const inicioVal = readMonthYear(document.getElementById('rec-inicio-wrap'), 'rec-inicio');
+  const fimVal = readMonthYear(document.getElementById('rec-fim-wrap'), 'rec-fim');
   if(!nome || !valor || !inicioVal){ toast('Preencha nome, valor e mês de início.'); return; }
-  const mesInicio = await ensureMesExists(inicioVal + '-01');
-  const mesFim = fimVal ? await ensureMesExists(fimVal + '-01') : null;
+  const mesInicio = await ensureMesExists(clampMinMonth(inicioVal));
+  const mesFim = fimVal ? await ensureMesExists(clampMinMonth(fimVal)) : null;
   await db.from('recorrentes').insert({ nome, categoria_id, valor, mes_inicio_id: mesInicio.id, mes_fim_id: mesFim ? mesFim.id : null, ativo: true });
-  document.getElementById('rec-nome').value = ''; document.getElementById('rec-valor').value = ''; document.getElementById('rec-fim').value = '';
+  document.getElementById('rec-nome').value = ''; document.getElementById('rec-valor').value = '';
+  document.getElementById('rec-fim-wrap').innerHTML = monthYearHtml('rec-fim', '', true);
   renderRecorrentes();
 };
 
@@ -1008,9 +1027,9 @@ document.getElementById('btn-add-divida').onclick = async () => {
   const valor_parcela = getCurrencyValue(document.getElementById('divida-valor'));
   const total_parcelas = parseInt(document.getElementById('divida-total').value) || 1;
   const entrada = getCurrencyValue(document.getElementById('divida-entrada'));
-  const mesInicioVal = document.getElementById('divida-mes-inicio').value;
+  const mesInicioVal = readMonthYear(document.getElementById('divida-mes-inicio-wrap'), 'divida-mes-inicio');
   if(!nome || !valor_parcela || !mesInicioVal){ toast('Preencha nome, valor e mês de início.'); return; }
-  const mesInicio = await ensureMesExists(mesInicioVal + '-01');
+  const mesInicio = await ensureMesExists(clampMinMonth(mesInicioVal));
   await db.from('dividas').insert({ nome, valor_parcela, total_parcelas, entrada, mes_inicio_id: mesInicio.id });
   await ensureMesExists(addMonths(mesInicio.referencia, total_parcelas-1));
   document.getElementById('divida-nome').value=''; document.getElementById('divida-valor').value='';
@@ -1038,9 +1057,9 @@ async function renderOrcamento(){
 document.getElementById('btn-add-orc').onclick = async () => {
   const categoria_id = document.getElementById('orc-categoria').value;
   const valor_esperado = getCurrencyValue(document.getElementById('orc-valor'));
-  const vigenciaVal = document.getElementById('orc-vigencia').value;
+  const vigenciaVal = readMonthYear(document.getElementById('orc-vigencia-wrap'), 'orc-vigencia');
   if(!categoria_id || !valor_esperado || !vigenciaVal){ toast('Preencha categoria, valor e mês de vigência.'); return; }
-  const mes = await ensureMesExists(vigenciaVal + '-01');
+  const mes = await ensureMesExists(clampMinMonth(vigenciaVal));
   await db.from('orcamentos').insert({ categoria_id, valor_esperado, mes_vigencia_id: mes.id });
   document.getElementById('orc-valor').value = '';
   renderOrcamento();
