@@ -592,7 +592,7 @@ function openModal(title, fields, values, onSave){
       if(f.type==='checkbox') out[f.key] = el.checked;
       else if(f.type==='currency') out[f.key] = getCurrencyValue(el);
       else if(f.type==='number') out[f.key] = parseFloat(el.value) || 0;
-      else if(f.type==='month') out[f.key] = readMonthYear(c, f.key) ? clampMinMonth(readMonthYear(c, f.key)) : null;
+      else if(f.type==='month') out[f.key] = readMonthYear(c, f.key);
       else out[f.key] = el.value || null;
     });
     onSave(out);
@@ -910,7 +910,8 @@ document.getElementById('btn-add-entrada').onclick = async () => {
   const descricao = document.getElementById('entrada-descricao').value.trim();
   const valor = getCurrencyValue(document.getElementById('entrada-valor'));
   if(!descricao || !valor){ toast('Preencha descrição e valor.'); return; }
-  await db.from('entradas').insert({ mes_id: currentMes().id, fonte_id, descricao, valor });
+  const { error } = await db.from('entradas').insert({ mes_id: currentMes().id, fonte_id, descricao, valor });
+  if(error){ toast('Erro: ' + error.message); return; }
   document.getElementById('entrada-valor').value = '';
   if(!fonte_id) document.getElementById('entrada-descricao').value = '';
   renderLancamentos(); if(activeSubtab()!=='lancamentos') return;
@@ -924,7 +925,8 @@ document.getElementById('btn-add-saida').onclick = async () => {
   const required = document.getElementById('saida-descricao').dataset.required === '1';
   if(!grupo_id || !data || !valor){ toast('Preencha grupo, data e valor.'); return; }
   if(required && !descricao){ toast('Descrição é obrigatória para Outros.'); return; }
-  await db.from('saidas').insert({ mes_id: currentMes().id, grupo_id, categoria_id, data, descricao: descricao || null, valor });
+  const { error } = await db.from('saidas').insert({ mes_id: currentMes().id, grupo_id, categoria_id, data, descricao: descricao || null, valor });
+  if(error){ toast('Erro: ' + error.message); return; }
   document.getElementById('saida-descricao').value = ''; document.getElementById('saida-valor').value = '';
   renderLancamentos();
 };
@@ -973,7 +975,8 @@ document.getElementById('btn-add-cartao').onclick = async () => {
   const parcelado = document.getElementById('cartao-parcelado').checked;
   const total_parcelas = parcelado ? (parseInt(document.getElementById('cartao-parcelas').value) || 2) : 1;
   if(!descricao || !valor_parcela){ toast('Preencha descrição e valor.'); return; }
-  await db.from('cartao_lancamentos').insert({ mes_id: currentMes().id, categoria_id, descricao, valor_parcela, total_parcelas });
+  const { error } = await db.from('cartao_lancamentos').insert({ mes_id: currentMes().id, categoria_id, descricao, valor_parcela, total_parcelas });
+  if(error){ toast('Erro: ' + error.message); return; }
   if(parcelado) await ensureMesExists(addMonths(currentMes().referencia, total_parcelas));
   document.getElementById('cartao-descricao').value = ''; document.getElementById('cartao-valor').value = '';
   document.getElementById('cartao-parcelado').checked = false; document.getElementById('cartao-parcelas-wrap').style.display = 'none';
@@ -1014,7 +1017,8 @@ async function renderChecklist(){
 async function toggleChecklist(origem, origemId, checked){
   const mes = currentMes();
   if(checked){
-    await db.from('checklist_confirmacoes').upsert({ mes_id: mes.id, origem, origem_id: origemId }, { onConflict: 'mes_id,origem,origem_id' });
+    const { error } = await db.from('checklist_confirmacoes').upsert({ mes_id: mes.id, origem, origem_id: origemId }, { onConflict: 'mes_id,origem,origem_id' });
+    if(error){ toast('Erro: ' + error.message); return; }
   } else {
     await db.from('checklist_confirmacoes').delete().eq('mes_id', mes.id).eq('origem', origem).eq('origem_id', origemId);
   }
@@ -1047,9 +1051,10 @@ document.getElementById('btn-add-rec').onclick = async () => {
   const inicioVal = readMonthYear(document.getElementById('rec-inicio-wrap'), 'rec-inicio');
   const fimVal = readMonthYear(document.getElementById('rec-fim-wrap'), 'rec-fim');
   if(!nome || !valor || !inicioVal){ toast('Preencha nome, valor e mês de início.'); return; }
-  const mesInicio = await ensureMesExists(clampMinMonth(inicioVal));
-  const mesFim = fimVal ? await ensureMesExists(clampMinMonth(fimVal)) : null;
-  await db.from('recorrentes').insert({ nome, categoria_id, valor, mes_inicio_id: mesInicio.id, mes_fim_id: mesFim ? mesFim.id : null, ativo: true });
+  const mesInicio = await ensureMesExists(inicioVal);
+  const mesFim = fimVal ? await ensureMesExists(fimVal) : null;
+  const { error } = await db.from('recorrentes').insert({ nome, categoria_id, valor, mes_inicio_id: mesInicio.id, mes_fim_id: mesFim ? mesFim.id : null, ativo: true });
+  if(error){ toast('Erro: ' + error.message); return; }
   document.getElementById('rec-nome').value = ''; document.getElementById('rec-valor').value = '';
   document.getElementById('rec-fim-wrap').innerHTML = monthYearHtml('rec-fim', '', true);
   renderRecorrentes();
@@ -1101,8 +1106,9 @@ document.getElementById('btn-add-divida').onclick = async () => {
   const entrada = getCurrencyValue(document.getElementById('divida-entrada'));
   const mesInicioVal = readMonthYear(document.getElementById('divida-mes-inicio-wrap'), 'divida-mes-inicio');
   if(!nome || !valor_parcela || !mesInicioVal){ toast('Preencha nome, valor e mês de início.'); return; }
-  const mesInicio = await ensureMesExists(clampMinMonth(mesInicioVal));
-  await db.from('dividas').insert({ nome, valor_parcela, total_parcelas, entrada, mes_inicio_id: mesInicio.id });
+  const mesInicio = await ensureMesExists(mesInicioVal);
+  const { error } = await db.from('dividas').insert({ nome, valor_parcela, total_parcelas, entrada, mes_inicio_id: mesInicio.id });
+  if(error){ toast('Erro: ' + error.message); return; }
   await ensureMesExists(addMonths(mesInicio.referencia, total_parcelas-1));
   document.getElementById('divida-nome').value=''; document.getElementById('divida-valor').value='';
   document.getElementById('divida-entrada').value=''; document.getElementById('divida-total').value='1';
@@ -1134,8 +1140,9 @@ document.getElementById('btn-add-orc').onclick = async () => {
   const tipo = document.getElementById('orc-tipo').value;
   const vigenciaVal = readMonthYear(document.getElementById('orc-vigencia-wrap'), 'orc-vigencia');
   if(!categoria_id || !valor_esperado || !vigenciaVal){ toast('Preencha categoria, valor e mês de vigência.'); return; }
-  const mes = await ensureMesExists(clampMinMonth(vigenciaVal));
-  await db.from('orcamentos').insert({ categoria_id, valor_esperado, tipo, mes_vigencia_id: mes.id });
+  const mes = await ensureMesExists(vigenciaVal);
+  const { error } = await db.from('orcamentos').insert({ categoria_id, valor_esperado, tipo, mes_vigencia_id: mes.id });
+  if(error){ toast('Erro: ' + error.message); return; }
   document.getElementById('orc-valor').value = '';
   renderOrcamento();
 };
@@ -1230,21 +1237,24 @@ function renderConfig(){
 document.getElementById('btn-add-grupo').onclick = async () => {
   const nome = document.getElementById('grupo-nome').value.trim();
   if(!nome){ toast('Informe o nome.'); return; }
-  await db.from('grupos').insert({ nome, ordem: state.grupos.length+1 });
+  const { error } = await db.from('grupos').insert({ nome, ordem: state.grupos.length+1 });
+  if(error){ toast('Erro: ' + error.message); return; }
   document.getElementById('grupo-nome').value=''; await bootstrap();
 };
 document.getElementById('btn-add-categoria').onclick = async () => {
   const grupo_id = document.getElementById('categoria-grupo').value;
   const nome = document.getElementById('categoria-nome').value.trim();
   if(!grupo_id || !nome){ toast('Selecione o grupo e informe o nome.'); return; }
-  await db.from('categorias').insert({ grupo_id, nome, ordem: state.categorias.length+1 });
+  const { error } = await db.from('categorias').insert({ grupo_id, nome, ordem: state.categorias.length+1 });
+  if(error){ toast('Erro: ' + error.message); return; }
   document.getElementById('categoria-nome').value=''; await bootstrap();
 };
 document.getElementById('btn-add-fonte').onclick = async () => {
   const nome = document.getElementById('fonte-nome').value.trim();
   const valor_padrao = getCurrencyValue(document.getElementById('fonte-valor'));
   if(!nome){ toast('Informe o nome.'); return; }
-  await db.from('fontes_renda').insert({ nome, valor_padrao, ordem: state.fontes.length+1 });
+  const { error } = await db.from('fontes_renda').insert({ nome, valor_padrao, ordem: state.fontes.length+1 });
+  if(error){ toast('Erro: ' + error.message); return; }
   document.getElementById('fonte-nome').value=''; document.getElementById('fonte-valor').value=''; await bootstrap();
 };
 
