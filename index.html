@@ -779,7 +779,7 @@ function populateStaticSelects(){
   document.getElementById('categoria-grupo').innerHTML = [...state.grupos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).map(g=>`<option value="${g.id}">${g.nome}</option>`).join('');
   document.getElementById('orc-categoria').innerHTML = categoriaOptionsHtml();
 
-  const defaultMonth = (state.meses[state.meses.length-1] || {referencia:'2026-07-01'}).referencia.slice(0,7);
+  const defaultMonth = new Date().toISOString().slice(0,7);
   document.getElementById('divida-mes-inicio-wrap').innerHTML = monthYearHtml('divida-mes-inicio', defaultMonth);
   document.getElementById('rec-inicio-wrap').innerHTML = monthYearHtml('rec-inicio', defaultMonth);
   document.getElementById('rec-fim-wrap').innerHTML = monthYearHtml('rec-fim', '', true);
