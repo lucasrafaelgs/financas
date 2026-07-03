@@ -102,8 +102,15 @@
   .grupo-value{font-size:16px;}
 
   canvas{max-height:260px;}
+  .chart-wrap{position:relative;width:100%;height:260px;}
+  .chart-wrap canvas{max-height:none;}
+  @media(max-width:600px){ .chart-wrap{height:220px;} }
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -2px;}
+  .table-scroll table{min-width:640px;}
+  .table-scroll td, .table-scroll th{white-space:nowrap;}
+  @media(max-width:600px){ .table-scroll table{min-width:560px;} }
   th{text-align:left;color:var(--ink-soft);font-weight:500;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;padding:8px 10px;border-bottom:1px solid var(--border);}
   td{padding:9px 10px;border-bottom:1px solid var(--border-soft);}
   tr:last-child td{border-bottom:none;}
@@ -150,8 +157,8 @@
   .orc-row{display:grid;grid-template-columns:150px 1fr 170px;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-soft);}
   .orc-row:last-child{border-bottom:none;}
   .orc-label{font-size:12.5px;color:var(--ink-soft);}
-  .orc-bar{height:7px;background:var(--border-soft);border-radius:6px;overflow:hidden;}
-  .orc-fill{height:100%;background:var(--ink);border-radius:6px;}
+  .orc-bar{display:block;width:100%;min-width:50px;height:10px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+  .orc-fill{display:block;height:100%;min-width:3px;background:var(--ink);border-radius:6px;}
   .orc-fill.over{background:var(--neg);}
   .orc-values{font-size:12px;text-align:right;}
 
@@ -186,6 +193,9 @@
     .grupo-grid{grid-template-columns:1fr 1fr;}
     .config-grid{grid-template-columns:1fr;}
     .orc-row{grid-template-columns:110px 1fr 120px;}
+  }
+  @media(max-width:480px){
+    .kpi-row{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -258,7 +268,7 @@
               <div class="panel-sub">Entradas fixas x saídas acumuladas dia a dia</div>
             </div>
           </div>
-          <canvas id="chart-mes" height="80"></canvas>
+          <div class="chart-wrap"><canvas id="chart-mes"></canvas></div>
         </div>
 
         <div class="panel">
@@ -288,10 +298,10 @@
             <div class="form-field"><label>Valor</label><input id="entrada-valor" type="text" placeholder="R$ 0,00"></div>
             <button class="btn btn-primary" id="btn-add-entrada">Adicionar</button>
           </div>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>Descrição</th><th>Fonte</th><th class="num">Valor</th><th></th></tr></thead>
             <tbody id="tbl-entradas"></tbody>
-          </table>
+          </table></div>
         </div>
 
         <div class="panel">
@@ -304,10 +314,10 @@
             <div class="form-field"><label>Valor</label><input id="saida-valor" type="text" placeholder="R$ 0,00"></div>
             <button class="btn btn-primary" id="btn-add-saida">Adicionar</button>
           </div>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>Data</th><th>Descrição</th><th>Grupo</th><th>Categoria</th><th class="num">Valor</th><th></th></tr></thead>
             <tbody id="tbl-saidas"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
 
@@ -320,10 +330,10 @@
             </div>
             <div class="kpi-value num" id="cartao-fatura-anterior">—</div>
           </div>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>Descrição</th><th>Categoria</th><th class="num">Valor</th><th></th></tr></thead>
             <tbody id="tbl-cartao-anterior"></tbody>
-          </table>
+          </table></div>
         </div>
         <div class="panel">
           <div class="panel-head">
@@ -341,10 +351,10 @@
             <div class="form-field" id="cartao-parcelas-wrap" style="display:none"><label>Nº de parcelas</label><input id="cartao-parcelas" type="number" min="2" value="2"></div>
             <button class="btn btn-primary" id="btn-add-cartao">Adicionar</button>
           </div>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>Descrição</th><th>Categoria</th><th class="num">Valor</th><th></th></tr></thead>
             <tbody id="tbl-cartao-proxima"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
 
@@ -379,10 +389,10 @@
           <div class="form-field"><label>Mês de término</label><div id="rec-fim-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-rec">Adicionar</button>
         </div>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr><th>Nome</th><th>Categoria</th><th class="num">Valor</th><th>Início</th><th>Término</th><th>Status</th><th></th></tr></thead>
           <tbody id="tbl-recorrentes"></tbody>
-        </table>
+        </table></div>
       </div>
     </section>
 
@@ -400,10 +410,10 @@
           <div class="form-field"><label>Mês de início</label><div id="divida-mes-inicio-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-divida">Adicionar</button>
         </div>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr><th>Nome</th><th class="num">Parcela</th><th class="num">Valor</th><th class="num">Entrada</th><th>Status</th><th></th></tr></thead>
           <tbody id="tbl-dividas"></tbody>
-        </table>
+        </table></div>
       </div>
     </section>
 
@@ -424,10 +434,10 @@
           <div class="form-field"><label>Vigente a partir de</label><div id="orc-vigencia-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-orc">Adicionar</button>
         </div>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr><th>Categoria</th><th class="num">Valor esperado</th><th>Tipo</th><th>Vigente a partir de</th><th></th></tr></thead>
           <tbody id="tbl-orcamento"></tbody>
-        </table>
+        </table></div>
       </div>
     </section>
 
@@ -442,11 +452,11 @@
       </div>
       <div class="panel">
         <div class="panel-head"><div class="panel-title">Entradas x saídas x saldo por mês</div></div>
-        <canvas id="chart-relatorio-fluxo" height="90"></canvas>
+        <div class="chart-wrap"><canvas id="chart-relatorio-fluxo"></canvas></div>
       </div>
       <div class="panel">
         <div class="panel-head"><div class="panel-title">Evolução do endividamento</div></div>
-        <canvas id="chart-relatorio-divida" height="90"></canvas>
+        <div class="chart-wrap"><canvas id="chart-relatorio-divida"></canvas></div>
       </div>
     </section>
 
@@ -460,7 +470,7 @@
             <div class="form-field"><label>Nome</label><input id="grupo-nome"></div>
             <button class="btn btn-primary" id="btn-add-grupo">Adicionar</button>
           </div>
-          <table><thead><tr><th>Nome</th><th></th></tr></thead><tbody id="tbl-grupos"></tbody></table>
+          <div class="table-scroll"><table><thead><tr><th>Nome</th><th></th></tr></thead><tbody id="tbl-grupos"></tbody></table></div>
         </div>
         <div class="panel">
           <div class="panel-head">
@@ -475,7 +485,7 @@
             <div class="form-field"><label>Nome</label><input id="categoria-nome"></div>
             <button class="btn btn-primary" id="btn-add-categoria">Adicionar</button>
           </div>
-          <table><thead><tr><th>Nome</th><th>Grupo</th><th></th></tr></thead><tbody id="tbl-categorias"></tbody></table>
+          <div class="table-scroll"><table><thead><tr><th>Nome</th><th>Grupo</th><th></th></tr></thead><tbody id="tbl-categorias"></tbody></table></div>
         </div>
         <div class="panel">
           <div class="panel-head"><div class="panel-title">Fontes de renda</div></div>
@@ -484,7 +494,7 @@
             <div class="form-field"><label>Valor padrão</label><input id="fonte-valor" type="text" placeholder="R$ 0,00"></div>
             <button class="btn btn-primary" id="btn-add-fonte">Adicionar</button>
           </div>
-          <table><thead><tr><th>Nome</th><th class="num">Padrão</th><th></th></tr></thead><tbody id="tbl-fontes"></tbody></table>
+          <div class="table-scroll"><table><thead><tr><th>Nome</th><th class="num">Padrão</th><th></th></tr></thead><tbody id="tbl-fontes"></tbody></table></div>
         </div>
       </div>
     </section>
@@ -871,7 +881,7 @@ async function renderMonthChart(totalEntradas, fixedDay1){
       { label:'Entradas', data: entradaLinha, borderColor:'#8c8b86', borderDash:[4,3], fill:false, borderWidth:1.5, pointRadius:0 },
       { label:'Saídas acumuladas', data: saidaAcum, borderColor:'#b5432f', borderDash:[2,2], fill:false, borderWidth:1.5, pointRadius:0 },
     ]},
-    options: { responsive:true, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{family:'Inter', size:11} } } },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{family:'Inter', size:11} } } },
       scales:{ y:{ ticks:{ callback:v=>fmtBRL(v), font:{size:10} }, grid:{color:'#e3e2dc'} }, x:{ grid:{display:false}, title:{display:true,text:'Dia do mês'} } } }
   });
 }
@@ -1227,15 +1237,15 @@ async function renderRelatorios(first){
   if(typeof Chart === 'undefined'){ document.querySelectorAll('#chart-relatorio-fluxo, #chart-relatorio-divida').forEach(c=>c.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'}))); return; }
   if(state.charts.fluxo) state.charts.fluxo.destroy();
   state.charts.fluxo = new Chart(c1, { type:'bar', data:{ labels, datasets:[
-    { label:'Entradas', data: entradasArr, backgroundColor:'#8c8b8630' },
-    { label:'Saídas', data: saidasArr, backgroundColor:'#b5432f40' },
-  ]}, options:{ responsive:true, plugins:{legend:{position:'bottom'}}, scales:{ y:{ ticks:{callback:v=>fmtBRL(v)} } } } });
+    { label:'Entradas', data: entradasArr, backgroundColor:'#8c8b86aa', borderColor:'#6c6b64', borderWidth:1, borderRadius:3 },
+    { label:'Saídas', data: saidasArr, backgroundColor:'#b5432f99', borderColor:'#b5432f', borderWidth:1, borderRadius:3 },
+  ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{ y:{ ticks:{callback:v=>fmtBRL(v)} } } } });
 
   const c2 = document.getElementById('chart-relatorio-divida');
   if(state.charts.divida) state.charts.divida.destroy();
   state.charts.divida = new Chart(c2, { type:'line', data:{ labels, datasets:[
     { label:'Saldo devedor total', data: dividaArr, borderColor:'#171715', backgroundColor:'#17171512', fill:true, borderWidth:2, pointRadius:2 },
-  ]}, options:{ responsive:true, plugins:{legend:{position:'bottom'}}, scales:{ y:{ ticks:{callback:v=>fmtBRL(v)} } } } });
+  ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{ y:{ ticks:{callback:v=>fmtBRL(v)} } } } });
 }
 
 /* ---------- CONFIGURAÇÕES ---------- */
