@@ -32,11 +32,6 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:var(--font-sans);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;
     -webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;overflow-x:hidden;}
-  @media (display-mode: standalone){
-    .sidebar{padding-top:calc(24px + env(safe-area-inset-top));}
-    .main{padding-top:calc(28px + env(safe-area-inset-top));padding-bottom:calc(60px + env(safe-area-inset-bottom));}
-    .login-screen{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
-  }
   button,input,select{font-family:inherit;font-size:inherit;}
   .num{font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
   ::selection{background:#17171522;}
@@ -198,6 +193,14 @@
   @media(max-width:480px){
     .kpi-row{grid-template-columns:1fr;}
   }
+  @media (display-mode: standalone), (display-mode: fullscreen){
+    .sidebar{padding-top:calc(46px + env(safe-area-inset-top)) !important;}
+    .main{padding-top:calc(28px + env(safe-area-inset-top)) !important;padding-bottom:calc(60px + env(safe-area-inset-bottom)) !important;}
+    .login-screen{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
+  }
+  html.pwa-standalone .sidebar{padding-top:calc(46px + env(safe-area-inset-top)) !important;}
+  html.pwa-standalone .main{padding-top:calc(28px + env(safe-area-inset-top)) !important;padding-bottom:calc(60px + env(safe-area-inset-bottom)) !important;}
+  html.pwa-standalone .login-screen{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
 </style>
 </head>
 <body>
@@ -1321,6 +1324,9 @@ window.deleteRow = deleteRow;
   const el = document.getElementById(id); if(el) maskCurrencyInput(el);
 });
 document.getElementById('rec-valor') && maskCurrencyInput(document.getElementById('rec-valor'));
+if (window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches) {
+  document.documentElement.classList.add('pwa-standalone');
+}
 checkSession();
 </script>
 </body>
