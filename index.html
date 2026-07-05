@@ -85,6 +85,14 @@
   .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;}
   .kpi-label{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;}
   .kpi-value{font-size:19px;}
+  .kpi-secondary{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft);font-size:11.5px;color:var(--ink-soft);}
+  .kpi-secondary .num{font-size:12.5px;color:var(--ink);}
+  .kpi-trend{font-size:11.5px;margin-top:7px;color:var(--ink-soft);min-height:16px;}
+  .kpi-trend.good{color:var(--pos);}
+  .kpi-trend.bad{color:var(--neg);}
+  .kpi-trend.neutral{color:var(--ink-faint);}
+  .dashboard-actions{display:flex;justify-content:flex-end;margin-bottom:12px;}
+  .privacy-toggle[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink);}
 
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px 24px;margin-bottom:18px;min-width:0;}
   .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap;}
@@ -95,6 +103,9 @@
   .grupo-card{border:1px solid var(--border-soft);border-radius:var(--radius-md);padding:14px 16px;background:var(--surface-alt);}
   .grupo-name{font-size:12px;color:var(--ink-soft);margin-bottom:6px;}
   .grupo-value{font-size:16px;}
+  .grupo-trend{font-size:11px;margin-top:6px;color:var(--ink-faint);}
+  .grupo-trend.good{color:var(--pos);}
+  .grupo-trend.bad{color:var(--neg);}
 
   canvas{max-height:260px;}
   .chart-wrap{position:relative;width:100%;height:260px;}
@@ -257,22 +268,40 @@
       </nav>
 
       <div id="subtab-dashboard">
+        <div class="dashboard-actions">
+          <button class="btn btn-ghost btn-sm privacy-toggle" id="btn-toggle-kpi-values" aria-pressed="false">Ocultar valores</button>
+        </div>
         <div class="kpi-row">
-          <div class="kpi-card"><div class="kpi-label">Entradas</div><div class="kpi-value num" id="kpi-entradas">—</div></div>
-          <div class="kpi-card"><div class="kpi-label">Saídas</div><div class="kpi-value num" id="kpi-saidas">—</div></div>
-          <div class="kpi-card"><div class="kpi-label">Dívidas</div><div class="kpi-value num" id="kpi-dividas">—</div></div>
-          <div class="kpi-card"><div class="kpi-label">Cartão (fatura anterior)</div><div class="kpi-value num" id="kpi-cartao">—</div></div>
-          <div class="kpi-card"><div class="kpi-label">Saldo remanescente</div><div class="kpi-value num" id="kpi-saldo">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Entradas</div><div class="kpi-value num" id="kpi-entradas">—</div><div class="kpi-trend" id="trend-entradas"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Saídas</div><div class="kpi-value num" id="kpi-saidas">—</div><div class="kpi-trend" id="trend-saidas"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Dívidas</div><div class="kpi-value num" id="kpi-dividas">—</div><div class="kpi-trend" id="trend-dividas"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Cartão (fatura anterior)</div><div class="kpi-value num" id="kpi-cartao">—</div><div class="kpi-trend" id="trend-cartao"></div></div>
+          <div class="kpi-card">
+            <div class="kpi-label">Saldo remanescente</div>
+            <div class="kpi-value num" id="kpi-saldo">—</div>
+            <div class="kpi-secondary">Projetado: <span class="num" id="kpi-saldo-projetado">—</span></div>
+            <div class="kpi-trend" id="trend-saldo"></div>
+          </div>
         </div>
 
         <div class="panel">
           <div class="panel-head">
             <div>
-              <div class="panel-title">Saldo projetado no mês</div>
-              <div class="panel-sub">Entradas fixas x saídas acumuladas dia a dia</div>
+              <div class="panel-title">Saldo projetado x realizado</div>
+              <div class="panel-sub">Linha pontilhada é a meta projetada; dívidas e cartão já entram no ponto de partida</div>
             </div>
           </div>
-          <div class="chart-wrap"><canvas id="chart-mes"></canvas></div>
+          <div class="chart-wrap"><canvas id="chart-saldo-comparativo"></canvas></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">Composição das saídas</div>
+              <div class="panel-sub">Saídas realizadas, orçamento restante, dívidas e cartão</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-composicao-saidas"></canvas></div>
         </div>
 
         <div class="panel">
@@ -455,11 +484,24 @@
         <button class="btn btn-ghost btn-sm" id="btn-rel-mais-meses">+ 6 meses futuros</button>
       </div>
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Entradas x saídas x saldo por mês</div></div>
+        <div class="panel-head"><div class="panel-title">Entradas x saídas por mês</div></div>
         <div class="chart-wrap"><canvas id="chart-relatorio-fluxo"></canvas></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Evolução do endividamento</div></div>
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Saldo projetado dos próximos meses</div>
+            <div class="panel-sub">Rendas cadastradas menos orçamento, dívidas e cartão</div>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-saldo-futuro"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Evolução da fatura do cartão</div></div>
+        <div class="chart-wrap"><canvas id="chart-relatorio-cartao"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Quitação de dívidas</div></div>
         <div class="chart-wrap"><canvas id="chart-relatorio-divida"></canvas></div>
       </div>
     </section>
@@ -523,10 +565,75 @@ const SUPABASE_KEY = 'sb_publishable_T8LDo65Z5-zFFgVkLBQtSQ_mSwGvkG9';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ==================== STATE ==================== */
-let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {}, configCategoriaSort: 'categoria' };
+let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {}, configCategoriaSort: 'categoria', kpiValuesHidden: false };
 let editRegistry = {}; let editCounter = 0;
+state.kpiValuesHidden = localStorage.getItem('kpiValuesHidden') === '1';
 
 const fmtBRL = v => (Number(v) || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const START_REF = '2026-07-01';
+const FIRST_COMPARE_REF = '2026-08-01';
+function maskBRL(){ return 'R$ •••'; }
+function setKpiValue(id, value){
+  const el = document.getElementById(id);
+  el.dataset.value = String(Number(value) || 0);
+  el.textContent = state.kpiValuesHidden ? maskBRL() : fmtBRL(value);
+}
+function setPrivateMoney(id, value){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.dataset.value = String(Number(value) || 0);
+  el.textContent = state.kpiValuesHidden ? maskBRL() : fmtBRL(value);
+}
+function updateKpiPrivacyButton(){
+  const btn = document.getElementById('btn-toggle-kpi-values');
+  if(!btn) return;
+  btn.textContent = state.kpiValuesHidden ? 'Mostrar valores' : 'Ocultar valores';
+  btn.setAttribute('aria-pressed', String(state.kpiValuesHidden));
+}
+function refreshKpiPrivacy(){
+  document.querySelectorAll('.kpi-value[data-value]').forEach(el=>{
+    el.textContent = state.kpiValuesHidden ? maskBRL() : fmtBRL(el.dataset.value);
+  });
+  document.querySelectorAll('.kpi-secondary .num[data-value]').forEach(el=>{
+    el.textContent = state.kpiValuesHidden ? maskBRL() : fmtBRL(el.dataset.value);
+  });
+  document.querySelectorAll('.kpi-trend[data-text]').forEach(el=>{
+    el.textContent = el.dataset.text ? (state.kpiValuesHidden ? 'Comparação oculta' : el.dataset.text) : '';
+  });
+  updateKpiPrivacyButton();
+}
+function setKpiTrend(id, current, previous, polarity){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.className = 'kpi-trend';
+  if(previous == null){
+    delete el.dataset.text;
+    el.textContent = '';
+    return;
+  }
+  const delta = (Number(current) || 0) - (Number(previous) || 0);
+  if(Math.abs(delta) < 0.01){
+    el.dataset.text = 'Igual ao mês anterior';
+    el.textContent = state.kpiValuesHidden ? 'Comparação oculta' : el.dataset.text;
+    el.classList.add('neutral');
+    return;
+  }
+  const increased = delta > 0;
+  const favorable = polarity === 'cost' ? !increased : increased;
+  const pct = previous ? ` (${Math.abs(delta / previous * 100).toFixed(0)}%)` : '';
+  el.dataset.text = `${increased ? '↑' : '↓'} ${fmtBRL(Math.abs(delta))}${pct} vs mês anterior`;
+  el.textContent = state.kpiValuesHidden ? 'Comparação oculta' : el.dataset.text;
+  el.classList.add(favorable ? 'good' : 'bad');
+}
+function trendHtml(current, previous, polarity){
+  if(previous == null) return '';
+  const delta = (Number(current) || 0) - (Number(previous) || 0);
+  if(Math.abs(delta) < 0.01) return '<div class="grupo-trend">Igual ao mês anterior</div>';
+  const increased = delta > 0;
+  const favorable = polarity === 'cost' ? !increased : increased;
+  const pct = previous ? ` (${Math.abs(delta / previous * 100).toFixed(0)}%)` : '';
+  return `<div class="grupo-trend ${favorable?'good':'bad'}">${increased ? '↑' : '↓'} ${fmtBRL(Math.abs(delta))}${pct}</div>`;
+}
 function fmtMonth(ref){
   const s = new Date(ref + 'T12:00:00').toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -562,7 +669,7 @@ function toast(msg){
 }
 function showError(msg){
   const el = document.getElementById('error-banner');
-  el.textContent = 'Erro: ' + msg + ' — copie esta mensagem e envie pro Claude.';
+  el.textContent = 'Erro: ' + msg + ' — copie esta mensagem e envie pro Codex.';
   el.style.display = 'block';
 }
 function hideError(){ document.getElementById('error-banner').style.display = 'none'; }
@@ -760,6 +867,11 @@ document.querySelectorAll('.tab-btn[data-subtab]').forEach(btn=>{
     await renderCurrentPage();
   });
 });
+document.getElementById('btn-toggle-kpi-values').onclick = () => {
+  state.kpiValuesHidden = !state.kpiValuesHidden;
+  localStorage.setItem('kpiValuesHidden', state.kpiValuesHidden ? '1' : '0');
+  refreshKpiPrivacy();
+};
 function activePage(){ return document.querySelector('.nav-item[data-page].active').dataset.page; }
 function activeSubtab(){ const b = document.querySelector('.tab-btn[data-subtab].active'); return b ? b.dataset.subtab : null; }
 async function renderCurrentPage(){
@@ -826,65 +938,143 @@ function refreshCategoriaSelectSaida(){
 }
 
 /* ---------- DASHBOARD ---------- */
-async function renderDashboard(){
-  const mes = currentMes();
-  const { data: consolidado } = await db.from('vw_saidas_consolidado').select('*').eq('mes_id', mes.id);
-  const { data: entradas } = await db.from('entradas').select('*').eq('mes_id', mes.id);
-
+async function getMonthlySummary(mes){
+  const [{ data: consolidado }, { data: entradas }, { data: orcamentos }] = await Promise.all([
+    db.from('vw_saidas_consolidado').select('*').eq('mes_id', mes.id),
+    db.from('entradas').select('*').eq('mes_id', mes.id),
+    db.from('vw_orcamento_vigente_mes').select('valor_esperado').eq('mes_id', mes.id).gt('valor_esperado', 0),
+  ]);
   const totalEntradas = (entradas||[]).reduce((s,e)=>s+Number(e.valor),0);
+  const totalRendaCadastrada = (state.fontes||[]).reduce((s,f)=>s+Number(f.valor_padrao),0);
   const diretas = (consolidado||[]).filter(c=>c.origem==='saida');
   const dividasLinhas = (consolidado||[]).filter(c=>c.origem==='divida');
   const cartaoLinhas = (consolidado||[]).filter(c=>c.origem==='cartao');
   const totalDiretas = diretas.reduce((s,c)=>s+Number(c.valor),0);
   const totalDividas = dividasLinhas.reduce((s,c)=>s+Number(c.valor),0);
   const totalCartao = cartaoLinhas.reduce((s,c)=>s+Number(c.valor),0);
-  const saldo = totalEntradas - totalDiretas - totalDividas - totalCartao;
+  const totalOrcamento = (orcamentos||[]).reduce((s,o)=>s+Number(o.valor_esperado),0);
+  const saldoRealizado = totalEntradas - totalDiretas - totalDividas - totalCartao;
+  const baseProjetada = Math.max(totalEntradas, totalRendaCadastrada);
+  const saldoRealizadoComRenda = baseProjetada - totalDiretas - totalDividas - totalCartao;
+  const saldoProjetado = baseProjetada - totalOrcamento - totalDividas - totalCartao;
+  return { consolidado, diretas, totalEntradas, totalRendaCadastrada, totalDiretas, totalDividas, totalCartao, totalOrcamento, saldoRealizado, saldoRealizadoComRenda, saldoProjetado };
+}
 
-  document.getElementById('kpi-entradas').textContent = fmtBRL(totalEntradas);
-  document.getElementById('kpi-saidas').textContent = fmtBRL(totalDiretas);
-  document.getElementById('kpi-dividas').textContent = fmtBRL(totalDividas);
-  document.getElementById('kpi-cartao').textContent = fmtBRL(totalCartao);
-  document.getElementById('kpi-saldo').textContent = fmtBRL(saldo);
+async function renderDashboard(){
+  const mes = currentMes();
+  const resumo = await getMonthlySummary(mes);
+  const prevMes = mes.referencia >= FIRST_COMPARE_REF && state.currentMesIdx > 0 ? state.meses[state.currentMesIdx - 1] : null;
+  const resumoPrev = prevMes ? await getMonthlySummary(prevMes) : null;
+
+  setKpiValue('kpi-entradas', resumo.totalEntradas);
+  setKpiValue('kpi-saidas', resumo.totalDiretas);
+  setKpiValue('kpi-dividas', resumo.totalDividas);
+  setKpiValue('kpi-cartao', resumo.totalCartao);
+  setKpiValue('kpi-saldo', resumo.saldoRealizado);
+  setPrivateMoney('kpi-saldo-projetado', resumo.saldoProjetado);
+  setKpiTrend('trend-entradas', resumo.totalEntradas, resumoPrev?.totalEntradas, 'income');
+  setKpiTrend('trend-saidas', resumo.totalDiretas, resumoPrev?.totalDiretas, 'cost');
+  setKpiTrend('trend-dividas', resumo.totalDividas, resumoPrev?.totalDividas, 'cost');
+  setKpiTrend('trend-cartao', resumo.totalCartao, resumoPrev?.totalCartao, 'cost');
+  setKpiTrend('trend-saldo', resumo.saldoRealizado, resumoPrev?.saldoRealizado, 'income');
+  updateKpiPrivacyButton();
 
   document.getElementById('grupo-grid').innerHTML = state.grupos.map(g=>{
-    const subtotal = diretas.filter(c=>c.grupo_id===g.id).reduce((s,c)=>s+Number(c.valor),0);
-    return `<div class="grupo-card"><div class="grupo-name">${g.nome}</div><div class="grupo-value num">${fmtBRL(subtotal)}</div></div>`;
+    const subtotal = resumo.diretas.filter(c=>c.grupo_id===g.id).reduce((s,c)=>s+Number(c.valor),0);
+    const subtotalPrev = resumoPrev ? resumoPrev.diretas.filter(c=>c.grupo_id===g.id).reduce((s,c)=>s+Number(c.valor),0) : null;
+    return `<div class="grupo-card"><div class="grupo-name">${g.nome}</div><div class="grupo-value num">${fmtBRL(subtotal)}</div>${trendHtml(subtotal, subtotalPrev, 'cost')}</div>`;
   }).join('');
 
-  await renderMonthChart(totalEntradas, totalDividas + totalCartao);
+  await renderComposicaoSaidasChart(resumo);
+  await renderSaldoComparativoChart(resumo);
   await renderOrcamentoComparativo();
 }
 
-async function renderMonthChart(totalEntradas, fixedDay1){
+async function getForwardMonths(count){
+  const start = currentMes().referencia;
+  const out = [];
+  for(let i=0; i<count; i++){
+    out.push(await ensureMesExists(addMonths(start, i)));
+  }
+  renderMonthNav();
+  return out;
+}
+function chartMoneyOptions(stacked){
+  return {
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{family:'Inter', size:11} } } },
+    scales:{
+      y:{ stacked:!!stacked, ticks:{callback:v=>fmtBRL(v), font:{size:10}}, grid:{color:'#e3e2dc'} },
+      x:{ stacked:!!stacked, grid:{display:false} }
+    }
+  };
+}
+async function renderSaldoFuturoChart(){
+  const ctx = document.getElementById('chart-saldo-futuro');
+  if(typeof Chart === 'undefined'){ ctx.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'})); return; }
+  const meses = await getForwardMonths(6);
+  const rows = [];
+  for(const m of meses) rows.push(await getMonthlySummary(m));
+  if(state.charts.saldoFuturo) state.charts.saldoFuturo.destroy();
+  state.charts.saldoFuturo = new Chart(ctx, {
+    type:'line',
+    data:{ labels:meses.map(m=>fmtMonth(m.referencia).replace(' de ', '/')), datasets:[
+      { label:'Saldo projetado', data:rows.map(r=>r.saldoProjetado), borderColor:'#2f7a4d', backgroundColor:'#2f7a4d18', fill:true, tension:.25, borderWidth:2, pointRadius:2 },
+      { label:'Saldo realizado', data:rows.map(r=>r.saldoRealizadoComRenda), borderColor:'#8c8b86', borderDash:[4,3], fill:false, borderWidth:1.5, pointRadius:2 },
+    ]},
+    options:chartMoneyOptions(false)
+  });
+}
+async function renderComposicaoSaidasChart(resumo){
+  const ctx = document.getElementById('chart-composicao-saidas');
+  if(typeof Chart === 'undefined'){ ctx.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'})); return; }
+  const orcamentoRestante = Math.max(resumo.totalOrcamento - resumo.totalDiretas, 0);
+  if(state.charts.composicaoSaidas) state.charts.composicaoSaidas.destroy();
+  state.charts.composicaoSaidas = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:[fmtMonth(currentMes().referencia).replace(' de ', '/')], datasets:[
+      { label:'Saídas realizadas', data:[resumo.totalDiretas], backgroundColor:'#6c6b64cc', borderRadius:3 },
+      { label:'Orçamento restante', data:[orcamentoRestante], backgroundColor:'#a4a39b88', borderRadius:3 },
+      { label:'Dívidas', data:[resumo.totalDividas], backgroundColor:'#b5432fcc', borderRadius:3 },
+      { label:'Cartão', data:[resumo.totalCartao], backgroundColor:'#d7906fcc', borderRadius:3 },
+    ]},
+    options:chartMoneyOptions(true)
+  });
+}
+async function renderSaldoComparativoChart(resumo){
+  const ctx = document.getElementById('chart-saldo-comparativo');
+  if(typeof Chart === 'undefined'){ ctx.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'})); return; }
   const mes = currentMes();
   const { data: saidasDiretas } = await db.from('saidas').select('valor,data').eq('mes_id', mes.id);
   const d0 = new Date(mes.referencia + 'T12:00:00');
   const daysInMonth = new Date(d0.getFullYear(), d0.getMonth()+1, 0).getDate();
+  const mesKey = mes.referencia.slice(0,7);
   const porDia = {};
-  (saidasDiretas||[]).forEach(s=>{ const day = new Date(s.data + 'T12:00:00').getDate(); porDia[day] = (porDia[day]||0) + Number(s.valor); });
+  (saidasDiretas||[]).forEach(s=>{
+    const day = (s.data || '').slice(0,7) === mesKey ? new Date(s.data + 'T12:00:00').getDate() : 1;
+    porDia[day] = (porDia[day] || 0) + Number(s.valor);
+  });
 
-  const labels = [], saidaAcum = [], entradaLinha = [], saldoLinha = [];
-  let running = 0;
+  const labels = [], realizado = [], projetado = [];
+  let saldo = Math.max(resumo.totalEntradas, resumo.totalRendaCadastrada);
   for(let day=1; day<=daysInMonth; day++){
-    if(day===1) running += fixedDay1;
-    running += (porDia[day]||0);
+    if(day === 1) saldo -= resumo.totalDividas + resumo.totalCartao;
+    saldo -= (porDia[day] || 0);
     labels.push(day);
-    saidaAcum.push(running);
-    entradaLinha.push(totalEntradas);
-    saldoLinha.push(totalEntradas - running);
+    realizado.push(saldo);
+    projetado.push(resumo.saldoProjetado);
   }
-  const ctx = document.getElementById('chart-mes');
-  if(typeof Chart === 'undefined'){ ctx.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'})); return; }
-  if(state.charts.mes) state.charts.mes.destroy();
-  state.charts.mes = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets: [
-      { label:'Saldo projetado', data: saldoLinha, borderColor:'#171715', backgroundColor:'#17171512', fill:true, tension:.25, borderWidth:2, pointRadius:0 },
-      { label:'Entradas', data: entradaLinha, borderColor:'#8c8b86', borderDash:[4,3], fill:false, borderWidth:1.5, pointRadius:0 },
-      { label:'Saídas acumuladas', data: saidaAcum, borderColor:'#b5432f', borderDash:[2,2], fill:false, borderWidth:1.5, pointRadius:0 },
+
+  if(state.charts.saldoComparativo) state.charts.saldoComparativo.destroy();
+  state.charts.saldoComparativo = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'Projetado', data:projetado, borderColor:'#2f7a4d', borderDash:[5,4], fill:false, borderWidth:1.8, pointRadius:0 },
+      { label:'Realizado', data:realizado, borderColor:'#171715', backgroundColor:'#17171512', fill:true, tension:.2, borderWidth:2, pointRadius:2 },
     ]},
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{family:'Inter', size:11} } } },
-      scales:{ y:{ ticks:{ callback:v=>fmtBRL(v), font:{size:10} }, grid:{color:'#e3e2dc'} }, x:{ grid:{display:false}, title:{display:true,text:'Dia do mês'} } } }
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{family:'Inter', size:11} } } },
+      scales:{ y:{ ticks:{callback:v=>fmtBRL(v), font:{size:10}}, grid:{color:'#e3e2dc'} }, x:{ grid:{display:false}, title:{display:true,text:'Dia do mês'} } } }
   });
 }
 
@@ -1188,10 +1378,11 @@ document.getElementById('btn-add-orc').onclick = async () => {
 
 /* ---------- RELATÓRIOS ---------- */
 function populateRelatorioSelects(){
-  const opts = state.meses.map(m=>`<option value="${m.id}">${fmtMonth(m.referencia)}</option>`).join('');
+  const mesesRelatorio = state.meses.filter(m=>m.referencia >= START_REF);
+  const opts = mesesRelatorio.map(m=>`<option value="${m.id}">${fmtMonth(m.referencia)}</option>`).join('');
   document.getElementById('rel-de').innerHTML = opts;
   document.getElementById('rel-ate').innerHTML = opts;
-  document.getElementById('rel-de').value = state.meses[0]?.id;
+  document.getElementById('rel-de').value = mesesRelatorio[0]?.id;
   document.getElementById('rel-ate').value = currentMes().id;
 }
 document.getElementById('btn-rel-atualizar').onclick = () => renderRelatorios(false);
@@ -1206,21 +1397,19 @@ async function renderRelatorios(first){
   if(first) populateRelatorioSelects();
   const deId = document.getElementById('rel-de').value, ateId = document.getElementById('rel-ate').value;
   const deIdx = state.meses.findIndex(m=>m.id===deId), ateIdx = state.meses.findIndex(m=>m.id===ateId);
-  const range = state.meses.slice(Math.min(deIdx,ateIdx), Math.max(deIdx,ateIdx)+1);
+  const range = state.meses.slice(Math.min(deIdx,ateIdx), Math.max(deIdx,ateIdx)+1).filter(m=>m.referencia >= START_REF);
   if(range.length===0) return;
 
-  const labels=[], entradasArr=[], saidasArr=[], saldoArr=[], dividaArr=[];
-  for(const m of range){
-    const [{data:ent},{data:cons},{data:dvMes}] = await Promise.all([
-      db.from('entradas').select('valor').eq('mes_id', m.id),
-      db.from('vw_saidas_consolidado').select('valor').eq('mes_id', m.id),
-      db.from('vw_dividas_mes').select('divida_id,valor,parcela_atual').eq('mes_id', m.id),
-    ]);
-    const te = (ent||[]).reduce((s,e)=>s+Number(e.valor),0);
-    const ts = (cons||[]).reduce((s,e)=>s+Number(e.valor),0);
-    labels.push(fmtMonth(m.referencia).replace(' de ', '/'));
-    entradasArr.push(te); saidasArr.push(ts); saldoArr.push(te-ts);
-  }
+  const labels=[], entradasArr=[], saidasArr=[], cartaoArr=[], dividaParcelaArr=[], dividaRestanteArr=[];
+  const summaries = [];
+  for(const m of range) summaries.push(await getMonthlySummary(m));
+  summaries.forEach((s, idx)=>{
+    labels.push(fmtMonth(range[idx].referencia).replace(' de ', '/'));
+    entradasArr.push(s.totalEntradas);
+    saidasArr.push(s.totalDiretas + s.totalDividas + s.totalCartao);
+    cartaoArr.push(s.totalCartao);
+    dividaParcelaArr.push(s.totalDividas);
+  });
   const { data: todasDividas } = await db.from('dividas').select('*').eq('quitada', false);
   const mesRefById = {}; state.meses.forEach(x=>mesRefById[x.id]=x.referencia);
   for(const m of range){
@@ -1231,21 +1420,30 @@ async function renderRelatorios(first){
       const parcela = (new Date(m.referencia).getFullYear()-new Date(inicioRef).getFullYear())*12 + (new Date(m.referencia).getMonth()-new Date(inicioRef).getMonth()) + 1;
       if(parcela >= 1 && parcela <= d.total_parcelas) restante += (d.total_parcelas - parcela + 1) * Number(d.valor_parcela);
     }
-    dividaArr.push(restante);
+    dividaRestanteArr.push(restante);
   }
 
   const c1 = document.getElementById('chart-relatorio-fluxo');
-  if(typeof Chart === 'undefined'){ document.querySelectorAll('#chart-relatorio-fluxo, #chart-relatorio-divida').forEach(c=>c.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'}))); return; }
+  if(typeof Chart === 'undefined'){ document.querySelectorAll('#chart-relatorio-fluxo, #chart-saldo-futuro, #chart-relatorio-cartao, #chart-relatorio-divida').forEach(c=>c.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'}))); return; }
   if(state.charts.fluxo) state.charts.fluxo.destroy();
   state.charts.fluxo = new Chart(c1, { type:'bar', data:{ labels, datasets:[
     { label:'Entradas', data: entradasArr, backgroundColor:'#8c8b86aa', borderColor:'#6c6b64', borderWidth:1, borderRadius:3 },
     { label:'Saídas', data: saidasArr, backgroundColor:'#b5432f99', borderColor:'#b5432f', borderWidth:1, borderRadius:3 },
   ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{ y:{ ticks:{callback:v=>fmtBRL(v)} } } } });
 
+  await renderSaldoFuturoChart();
+
+  const cCartao = document.getElementById('chart-relatorio-cartao');
+  if(state.charts.cartaoEvolucao) state.charts.cartaoEvolucao.destroy();
+  state.charts.cartaoEvolucao = new Chart(cCartao, { type:'line', data:{ labels, datasets:[
+    { label:'Fatura do cartão', data: cartaoArr, borderColor:'#b5432f', backgroundColor:'#b5432f14', fill:true, tension:.25, borderWidth:2, pointRadius:2 },
+  ]}, options:chartMoneyOptions(false) });
+
   const c2 = document.getElementById('chart-relatorio-divida');
   if(state.charts.divida) state.charts.divida.destroy();
-  state.charts.divida = new Chart(c2, { type:'line', data:{ labels, datasets:[
-    { label:'Saldo devedor total', data: dividaArr, borderColor:'#171715', backgroundColor:'#17171512', fill:true, borderWidth:2, pointRadius:2 },
+  state.charts.divida = new Chart(c2, { type:'bar', data:{ labels, datasets:[
+    { type:'line', label:'Saldo devedor restante', data: dividaRestanteArr, borderColor:'#171715', backgroundColor:'#17171512', fill:true, tension:.25, borderWidth:2, pointRadius:2 },
+    { label:'Parcelas do mês', data: dividaParcelaArr, backgroundColor:'#b5432f99', borderColor:'#b5432f', borderWidth:1, borderRadius:3 },
   ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{ y:{ ticks:{callback:v=>fmtBRL(v)} } } } });
 }
 
