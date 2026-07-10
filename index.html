@@ -94,7 +94,7 @@
   .dashboard-actions{display:flex;justify-content:flex-end;margin-bottom:12px;}
   .privacy-toggle[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink);}
 
-  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px 24px;margin-bottom:18px;min-width:0;}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px 24px;margin-bottom:18px;min-width:0;overflow:hidden;}
   .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap;}
   .panel-title{font-size:14px;font-weight:600;}
   .panel-sub{font-size:12px;color:var(--ink-soft);margin-top:2px;}
@@ -106,10 +106,19 @@
   .grupo-trend{font-size:11px;margin-top:6px;color:var(--ink-faint);}
   .grupo-trend.good{color:var(--pos);}
   .grupo-trend.bad{color:var(--neg);}
+  .grupo-share{font-size:11px;margin-top:4px;color:var(--ink-soft);}
+  .segmented{display:flex;gap:4px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;background:var(--surface-alt);}
+  .seg-btn{border:none;background:transparent;color:var(--ink-soft);border-radius:5px;padding:6px 10px;font-size:12px;cursor:pointer;}
+  .seg-btn.active{background:var(--ink);color:#fff;font-weight:600;}
 
   canvas{max-height:260px;}
   .chart-wrap{position:relative;width:100%;height:260px;}
-  .chart-wrap canvas{max-height:none;}
+  .chart-wrap canvas{display:block;max-width:100%;max-height:none;}
+  .chart-pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .chart-pair > div{min-width:0;}
+  .chart-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:8px;}
+  .chart-pair .chart-wrap{height:280px;}
+  @media(max-width:760px){ .chart-pair{grid-template-columns:1fr;} }
   @media(max-width:600px){ .chart-wrap{height:220px;} }
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
@@ -153,8 +162,9 @@
     border-radius:4px;cursor:pointer;accent-color:var(--ink);flex:0 0 auto;
   }
 
-  .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);}
-  .tab-btn{background:none;border:none;padding:10px 4px;margin-right:20px;font-size:13px;color:var(--ink-soft);cursor:pointer;border-bottom:2px solid transparent;}
+  .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab-btn{background:none;border:none;padding:10px 4px;margin-right:20px;font-size:13px;color:var(--ink-soft);cursor:pointer;border-bottom:2px solid transparent;flex:0 0 auto;white-space:nowrap;}
   .tab-btn.active{color:var(--ink);font-weight:600;border-color:var(--ink);}
 
   .empty-state{color:var(--ink-faint);font-size:13px;padding:18px 0;text-align:center;}
@@ -305,7 +315,35 @@
         </div>
 
         <div class="panel">
-          <div class="panel-head"><div class="panel-title">Saídas por grupo</div></div>
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">Saídas no débito e no crédito por categoria</div>
+              <div class="panel-sub">Débito do mês selecionado e crédito da próxima fatura</div>
+            </div>
+          </div>
+          <div class="chart-pair">
+            <div>
+              <div class="chart-title">Débito</div>
+              <div class="chart-wrap"><canvas id="chart-saidas-categorias"></canvas></div>
+            </div>
+            <div>
+              <div class="chart-title">Crédito</div>
+              <div class="chart-wrap"><canvas id="chart-cartao-categorias"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">Saídas por grupo</div>
+              <div class="panel-sub">Compare débito e crédito separadamente</div>
+            </div>
+            <div class="segmented" id="grupo-payment-mode">
+              <button class="seg-btn active" data-mode="debito">Débito</button>
+              <button class="seg-btn" data-mode="credito">Crédito</button>
+            </div>
+          </div>
           <div class="grupo-grid" id="grupo-grid"></div>
         </div>
 
@@ -565,7 +603,7 @@ const SUPABASE_KEY = 'sb_publishable_T8LDo65Z5-zFFgVkLBQtSQ_mSwGvkG9';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ==================== STATE ==================== */
-let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {}, configCategoriaSort: 'categoria', kpiValuesHidden: false };
+let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {}, configCategoriaSort: 'categoria', kpiValuesHidden: false, grupoPaymentMode: 'debito' };
 let editRegistry = {}; let editCounter = 0;
 state.kpiValuesHidden = localStorage.getItem('kpiValuesHidden') === '1';
 
@@ -867,6 +905,13 @@ document.querySelectorAll('.tab-btn[data-subtab]').forEach(btn=>{
     await renderCurrentPage();
   });
 });
+document.querySelectorAll('#grupo-payment-mode .seg-btn').forEach(btn=>{
+  btn.addEventListener('click', async () => {
+    state.grupoPaymentMode = btn.dataset.mode;
+    document.querySelectorAll('#grupo-payment-mode .seg-btn').forEach(b=>b.classList.toggle('active', b===btn));
+    await renderDashboard();
+  });
+});
 document.getElementById('btn-toggle-kpi-values').onclick = () => {
   state.kpiValuesHidden = !state.kpiValuesHidden;
   localStorage.setItem('kpiValuesHidden', state.kpiValuesHidden ? '1' : '0');
@@ -965,6 +1010,22 @@ async function renderDashboard(){
   const resumo = await getMonthlySummary(mes);
   const prevMes = mes.referencia >= FIRST_COMPARE_REF && state.currentMesIdx > 0 ? state.meses[state.currentMesIdx - 1] : null;
   const resumoPrev = prevMes ? await getMonthlySummary(prevMes) : null;
+  const nextMes = await ensureMesExists(addMonths(mes.referencia, 1));
+  const { data: itensCartaoProxima } = await db.from('vw_cartao_fatura_itens').select('categoria_id,valor').eq('fatura_mes_id', nextMes.id);
+  const cartaoGrupoTotal = {};
+  (itensCartaoProxima||[]).forEach(i=>{
+    const categoria = state.categorias.find(c=>c.id===i.categoria_id);
+    if(categoria?.grupo_id) cartaoGrupoTotal[categoria.grupo_id] = (cartaoGrupoTotal[categoria.grupo_id] || 0) + Number(i.valor);
+  });
+  const prevCartaoGrupoTotal = {};
+  if(prevMes){
+    const prevNextMes = await ensureMesExists(addMonths(prevMes.referencia, 1));
+    const { data: itensCartaoPrev } = await db.from('vw_cartao_fatura_itens').select('categoria_id,valor').eq('fatura_mes_id', prevNextMes.id);
+    (itensCartaoPrev||[]).forEach(i=>{
+      const categoria = state.categorias.find(c=>c.id===i.categoria_id);
+      if(categoria?.grupo_id) prevCartaoGrupoTotal[categoria.grupo_id] = (prevCartaoGrupoTotal[categoria.grupo_id] || 0) + Number(i.valor);
+    });
+  }
 
   setKpiValue('kpi-entradas', resumo.totalEntradas);
   setKpiValue('kpi-saidas', resumo.totalDiretas);
@@ -979,13 +1040,24 @@ async function renderDashboard(){
   setKpiTrend('trend-saldo', resumo.saldoRealizado, resumoPrev?.saldoRealizado, 'income');
   updateKpiPrivacyButton();
 
+  document.querySelectorAll('#grupo-payment-mode .seg-btn').forEach(btn=>btn.classList.toggle('active', btn.dataset.mode===state.grupoPaymentMode));
   document.getElementById('grupo-grid').innerHTML = state.grupos.map(g=>{
-    const subtotal = resumo.diretas.filter(c=>c.grupo_id===g.id).reduce((s,c)=>s+Number(c.valor),0);
-    const subtotalPrev = resumoPrev ? resumoPrev.diretas.filter(c=>c.grupo_id===g.id).reduce((s,c)=>s+Number(c.valor),0) : null;
-    return `<div class="grupo-card"><div class="grupo-name">${g.nome}</div><div class="grupo-value num">${fmtBRL(subtotal)}</div>${trendHtml(subtotal, subtotalPrev, 'cost')}</div>`;
+    const subtotalDebito = resumo.diretas.filter(c=>c.grupo_id===g.id).reduce((s,c)=>s+Number(c.valor),0);
+    const subtotalCredito = cartaoGrupoTotal[g.id] || 0;
+    const totalGrupo = subtotalDebito + subtotalCredito;
+    const subtotal = state.grupoPaymentMode === 'credito' ? subtotalCredito : subtotalDebito;
+    const subtotalPrev = resumoPrev
+      ? (state.grupoPaymentMode === 'credito'
+        ? (prevCartaoGrupoTotal[g.id] || 0)
+        : resumoPrev.diretas.filter(c=>c.grupo_id===g.id).reduce((s,c)=>s+Number(c.valor),0))
+      : null;
+    const pct = totalGrupo > 0 ? Math.round((subtotal / totalGrupo) * 100) : 0;
+    const modoLabel = state.grupoPaymentMode === 'credito' ? 'crédito' : 'débito';
+    return `<div class="grupo-card"><div class="grupo-name">${g.nome}</div><div class="grupo-value num">${fmtBRL(subtotal)}</div><div class="grupo-share">${pct}% do grupo no ${modoLabel}</div>${trendHtml(subtotal, subtotalPrev, 'cost')}</div>`;
   }).join('');
 
   await renderComposicaoSaidasChart(resumo);
+  await renderSaidasCategoriasChart(resumo, itensCartaoProxima || []);
   await renderSaldoComparativoChart(resumo);
   await renderOrcamentoComparativo();
 }
@@ -1010,6 +1082,26 @@ function chartMoneyOptions(stacked){
     }
   };
 }
+const centerTotalPlugin = {
+  id:'centerTotal',
+  afterDraw(chart, args, opts){
+    if(!opts || opts.value == null) return;
+    const meta = chart.getDatasetMeta(0);
+    const arc = meta?.data?.[0];
+    if(!arc) return;
+    const { ctx } = chart;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#171715';
+    ctx.font = '700 15px Inter, sans-serif';
+    ctx.fillText(fmtBRL(opts.value), arc.x, arc.y - 4);
+    ctx.fillStyle = '#6c6b64';
+    ctx.font = '500 10px Inter, sans-serif';
+    ctx.fillText('total', arc.x, arc.y + 14);
+    ctx.restore();
+  }
+};
 async function renderSaldoFuturoChart(){
   const ctx = document.getElementById('chart-saldo-futuro');
   if(typeof Chart === 'undefined'){ ctx.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'})); return; }
@@ -1040,6 +1132,71 @@ async function renderComposicaoSaidasChart(resumo){
       { label:'Cartão', data:[resumo.totalCartao], backgroundColor:'#d7906fcc', borderRadius:3 },
     ]},
     options:chartMoneyOptions(true)
+  });
+}
+async function renderSaidasCategoriasChart(resumo, itensCartao){
+  const ctx = document.getElementById('chart-saidas-categorias');
+  const ctxCartao = document.getElementById('chart-cartao-categorias');
+  if(typeof Chart === 'undefined'){ [ctx, ctxCartao].forEach(c=>c.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'}))); return; }
+  const palette = ['#2b2b28','#2f7a4d','#4f6f91','#b56f2f','#7a5c2f','#8a5d7a','#5f8a82','#9a4f3f','#5b5f66','#6f7f45','#9b6f9f','#a4a39b'];
+  const porCategoria = {};
+  resumo.diretas.forEach(s=>{
+    const nome = state.categorias.find(c=>c.id===s.categoria_id)?.nome || 'Sem categoria';
+    porCategoria[nome] = (porCategoria[nome] || 0) + Number(s.valor);
+  });
+  const fatias = Object.entries(porCategoria)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([label, valor], idx)=>({ label, valor, color:palette[idx % palette.length] }))
+    .filter(f=>Number(f.valor) > 0);
+  const cartaoPorCategoria = {};
+  (itensCartao||[]).forEach(i=>{
+    const nome = state.categorias.find(c=>c.id===i.categoria_id)?.nome || 'Sem categoria';
+    cartaoPorCategoria[nome] = (cartaoPorCategoria[nome] || 0) + Number(i.valor);
+  });
+  const fatiasCartao = Object.entries(cartaoPorCategoria)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([label, valor], idx)=>({ label, valor, color:palette[idx % palette.length] }))
+    .filter(f=>Number(f.valor) > 0);
+  const doughnutOptions = {
+    responsive:true,
+    maintainAspectRatio:false,
+    cutout:'58%',
+    plugins:{
+      legend:{ display:false },
+      tooltip:{ callbacks:{ label:ctx=>`${ctx.label}: ${fmtBRL(ctx.parsed)}` } }
+    }
+  };
+  const totalDebito = fatias.reduce((s,f)=>s+Number(f.valor),0);
+  const totalCredito = fatiasCartao.reduce((s,f)=>s+Number(f.valor),0);
+  if(state.charts.saidasCategorias) state.charts.saidasCategorias.destroy();
+  state.charts.saidasCategorias = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:fatias.map(f=>f.label),
+      datasets:[{
+        data:fatias.map(f=>f.valor),
+        backgroundColor:fatias.map(f=>f.color),
+        borderColor:'#ffffff',
+        borderWidth:2,
+      }]
+    },
+    options:{...doughnutOptions, plugins:{...doughnutOptions.plugins, centerTotal:{value:totalDebito}}},
+    plugins:[centerTotalPlugin]
+  });
+  if(state.charts.cartaoCategorias) state.charts.cartaoCategorias.destroy();
+  state.charts.cartaoCategorias = new Chart(ctxCartao, {
+    type:'doughnut',
+    data:{
+      labels:fatiasCartao.map(f=>f.label),
+      datasets:[{
+        data:fatiasCartao.map(f=>f.valor),
+        backgroundColor:fatiasCartao.map(f=>f.color),
+        borderColor:'#ffffff',
+        borderWidth:2,
+      }]
+    },
+    options:{...doughnutOptions, plugins:{...doughnutOptions.plugins, centerTotal:{value:totalCredito}}},
+    plugins:[centerTotalPlugin]
   });
 }
 async function renderSaldoComparativoChart(resumo){
@@ -1187,12 +1344,14 @@ async function renderCartao(){
     if(i.origem === 'recorrente'){
       return `<tr><td>${i.descricao}</td><td>${catNome}</td><td class="num">${fmtBRL(i.valor)}</td><td><span class="tag">Recorrente</span></td></tr>`;
     }
+    const parcelasMatch = String(i.descricao || '').match(/\((\d+)\/(\d+)\)$/);
+    const totalParcelas = Number(i.total_parcelas || i.total_parcelas_origem || parcelasMatch?.[2] || 1);
     const key = registerEdit('cartao_lancamentos', i.origem_id, 'Editar lançamento de cartão', [
       {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
       {key:'descricao', label:'Descrição', type:'text'},
       {key:'valor_parcela', label:'Valor da parcela', type:'currency'},
       {key:'total_parcelas', label:'Total de parcelas', type:'number'},
-    ], { categoria_id: i.categoria_id, descricao: i.descricao.replace(/\s\(\d+\/\d+\)$/,''), valor_parcela: i.valor, total_parcelas: 1 });
+    ], { categoria_id: i.categoria_id, descricao: i.descricao.replace(/\s\(\d+\/\d+\)$/,''), valor_parcela: i.valor, total_parcelas: totalParcelas });
     return `<tr><td>${i.descricao}</td><td>${catNome}</td><td class="num">${fmtBRL(i.valor)}</td>
       <td class="row-actions">${editBtn(key)}${delBtn('cartao_lancamentos', i.origem_id)}</td></tr>`;
   }).join('') || '<tr><td colspan="4" class="empty-state">Nenhum item lançado ainda.</td></tr>';
