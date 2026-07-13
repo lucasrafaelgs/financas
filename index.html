@@ -140,6 +140,10 @@
   .tag{font-size:10.5px;background:var(--surface-alt);border:1px solid var(--border-soft);padding:2px 8px;border-radius:20px;color:var(--ink-soft);white-space:nowrap;}
   .tag.pos{background:var(--pos-bg);color:var(--pos);border-color:transparent;}
   .tag.neg{background:var(--neg-bg);color:var(--neg);border-color:transparent;}
+  .due-pill{display:inline-flex;align-items:center;margin-left:8px;font-size:10.5px;background:var(--surface-alt);border:1px solid var(--border-soft);padding:2px 8px;border-radius:20px;color:var(--ink-soft);white-space:nowrap;}
+  .due-pill.warn{background:#fff5d8;color:#8a6412;border-color:#f0d88a;}
+  .due-pill.late{background:var(--neg-bg);color:var(--neg);border-color:transparent;}
+  .due-pill.done{background:var(--pos-bg);color:var(--pos);border-color:transparent;}
 
   .form-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;}
   .form-field{display:flex;flex-direction:column;gap:5px;flex:0 0 186px;width:186px;}
@@ -203,6 +207,7 @@
   .check-row input[type=checkbox]{width:17px;height:17px;cursor:pointer;accent-color:var(--ink);flex-shrink:0;}
   .check-row label{font-size:13.5px;cursor:pointer;flex:1;}
   .check-row label.done{color:var(--ink-faint);text-decoration:line-through;}
+  .check-row label .due-pill{vertical-align:middle;}
 
   @media(max-width:980px){
     .app-shell{flex-direction:column;}
@@ -478,11 +483,12 @@
           <div class="form-field"><label>Valor da parcela</label><input id="divida-valor" type="text" placeholder="R$ 0,00"></div>
           <div class="form-field"><label>Total de parcelas</label><input id="divida-total" type="number" min="1" value="1"></div>
           <div class="form-field"><label>Entrada (opcional)</label><input id="divida-entrada" type="text" placeholder="R$ 0,00"></div>
+          <div class="form-field"><label>Dia de vencimento</label><input id="divida-vencimento" type="number" min="1" max="31" placeholder="Ex: 10"></div>
           <div class="form-field"><label>Mês de início</label><div id="divida-mes-inicio-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-divida">Adicionar</button>
         </div>
         <div class="table-scroll"><table>
-          <thead><tr><th>Nome</th><th class="num">Parcela</th><th class="num">Valor</th><th class="num">Entrada</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nome</th><th class="num">Parcela</th><th class="num">Valor</th><th class="num">Entrada</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
           <tbody id="tbl-dividas"></tbody>
         </table></div>
       </div>
@@ -502,11 +508,12 @@
           <div class="form-field"><label>Categoria</label><select id="orc-categoria"></select></div>
           <div class="form-field"><label>Valor esperado</label><input id="orc-valor" type="text" placeholder="R$ 0,00"></div>
           <div class="form-field"><label>Tipo</label><select id="orc-tipo"><option value="variavel">Variável</option><option value="fixo">Fixo</option></select></div>
+          <div class="form-field"><label>Dia de vencimento</label><input id="orc-vencimento" type="number" min="1" max="31" placeholder="Ex: 5"></div>
           <div class="form-field"><label>Vigente a partir de</label><div id="orc-vigencia-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-orc">Adicionar</button>
         </div>
         <div class="table-scroll"><table>
-          <thead><tr><th>Categoria</th><th class="num">Valor esperado</th><th>Tipo</th><th>Vigente a partir de</th><th></th></tr></thead>
+          <thead><tr><th>Categoria</th><th class="num">Valor esperado</th><th>Tipo</th><th>Vencimento</th><th>Vigente a partir de</th><th></th></tr></thead>
           <tbody id="tbl-orcamento"></tbody>
         </table></div>
       </div>
@@ -724,6 +731,45 @@ function getCurrencyValue(el){
   const digits = (el.value || '').replace(/\D/g, '');
   return digits ? parseInt(digits,10)/100 : 0;
 }
+function getDueDayValue(el){
+  const n = parseInt(el.value, 10);
+  return Number.isInteger(n) && n >= 1 && n <= 31 ? n : null;
+}
+function fmtDueDay(day){ return day ? `Dia ${String(day).padStart(2,'0')}` : '—'; }
+function dueStatusHtml(day, mesRef, checked){
+  if(!day) return '';
+  const base = new Date(mesRef + 'T12:00:00');
+  const due = new Date(base.getFullYear(), base.getMonth(), Math.min(day, new Date(base.getFullYear(), base.getMonth()+1, 0).getDate()), 12);
+  const today = new Date();
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+  const diffDays = Math.round((due - todayDate) / 86400000);
+  if(checked) return `<span class="due-pill done">Pago · ${fmtDueDay(day)}</span>`;
+  if(diffDays < 0) return `<span class="due-pill late">Vencido · ${fmtDueDay(day)}</span>`;
+  if(diffDays === 0) return `<span class="due-pill warn">Vence hoje</span>`;
+  if(diffDays <= 3) return `<span class="due-pill warn">Vence em ${diffDays}d</span>`;
+  return `<span class="due-pill">${fmtDueDay(day)}</span>`;
+}
+function isMissingColumnError(error){
+  return error && (error.code === '42703' || /column .* does not exist/i.test(error.message || ''));
+}
+async function insertWithOptionalDue(table, payload){
+  const { error } = await db.from(table).insert(payload);
+  if(!isMissingColumnError(error)) return { error };
+  const fallback = {...payload};
+  delete fallback.dia_vencimento;
+  const retry = await db.from(table).insert(fallback);
+  if(!retry.error) toast('Salvo sem vencimento. Adicione a coluna dia_vencimento no Supabase para persistir esse campo.');
+  return retry;
+}
+async function updateWithOptionalDue(table, id, payload){
+  const { error } = await db.from(table).update(payload).eq('id', id);
+  if(!isMissingColumnError(error)) return { error };
+  const fallback = {...payload};
+  delete fallback.dia_vencimento;
+  const retry = await db.from(table).update(fallback).eq('id', id);
+  if(!retry.error) toast('Alteração salva sem vencimento. Adicione a coluna dia_vencimento no Supabase para persistir esse campo.');
+  return retry;
+}
 
 /* ==================== MODAL ==================== */
 function registerEdit(table, id, title, fields, values, monthFields){
@@ -740,7 +786,9 @@ async function openEditFromRegistry(key){
       if(vals[mk]){ const mes = await ensureMesExists(vals[mk]); vals[mk] = mes.id; }
       else vals[mk] = null;
     }
-    const { error } = await db.from(cfg.table).update(vals).eq('id', cfg.id);
+    const { error } = vals.hasOwnProperty('dia_vencimento')
+      ? await updateWithOptionalDue(cfg.table, cfg.id, vals)
+      : await db.from(cfg.table).update(vals).eq('id', cfg.id);
     if(error){ toast('Erro: ' + error.message); return; }
     closeModal(); await bootstrap();
   });
@@ -776,7 +824,7 @@ function openModal(title, fields, values, onSave){
       const el = c.querySelector(`[data-key="${f.key}"]`);
       if(f.type==='checkbox') out[f.key] = el.checked;
       else if(f.type==='currency') out[f.key] = getCurrencyValue(el);
-      else if(f.type==='number') out[f.key] = parseFloat(el.value) || 0;
+      else if(f.type==='number') out[f.key] = f.key === 'dia_vencimento' ? getDueDayValue(el) : (parseFloat(el.value) || 0);
       else if(f.type==='month') out[f.key] = readMonthYear(c, f.key);
       else out[f.key] = el.value || null;
     });
@@ -1372,12 +1420,25 @@ document.getElementById('btn-add-cartao').onclick = async () => {
 };
 
 /* ---------- CHECKLIST ---------- */
+async function loadDueDayMap(table, ids){
+  if(!ids.length) return {};
+  const { data, error } = await db.from(table).select('id,dia_vencimento').in('id', ids);
+  if(isMissingColumnError(error)) return {};
+  if(error){ console.warn(error); return {}; }
+  const out = {};
+  (data||[]).forEach(r=>{ out[r.id] = r.dia_vencimento; });
+  return out;
+}
 async function renderChecklist(){
   const mes = currentMes();
   const [{data:orcs}, {data:dividasMes}, {data:confirmados}] = await Promise.all([
     db.from('vw_orcamento_vigente_mes').select('*').eq('mes_id', mes.id).eq('tipo','fixo'),
     db.from('vw_dividas_mes').select('*').eq('mes_id', mes.id),
     db.from('checklist_confirmacoes').select('*').eq('mes_id', mes.id),
+  ]);
+  const [orcDueMap, dividaDueMap] = await Promise.all([
+    loadDueDayMap('orcamentos', [...new Set((orcs||[]).map(o=>o.orcamento_id).filter(Boolean))]),
+    loadDueDayMap('dividas', [...new Set((dividasMes||[]).map(d=>d.divida_id).filter(Boolean))]),
   ]);
   const confirmSet = new Set((confirmados||[]).map(c=>c.origem+'|'+c.origem_id));
   let html = '';
@@ -1387,8 +1448,9 @@ async function renderChecklist(){
       const key = String(o.orcamento_id);
       const domId = 'chk-o-' + key;
       const checked = confirmSet.has('orcamento|'+key);
+      const dueDay = o.dia_vencimento || orcDueMap[o.orcamento_id];
       return `<div class="check-row"><input type="checkbox" id="${domId}" ${checked?'checked':''} onchange="toggleChecklist('orcamento','${key}', this.checked)">
-        <label for="${domId}" class="${checked?'done':''}">${nome}${o.tipo==='fixo'?' <span class="tag">Fixo</span>':''}</label></div>`;
+        <label for="${domId}" class="${checked?'done':''}">${nome}${o.tipo==='fixo'?' <span class="tag">Fixo</span>':''}${dueStatusHtml(dueDay, mes.referencia, checked)}</label></div>`;
     }).join('');
   }
   if(dividasMes && dividasMes.length){
@@ -1396,8 +1458,9 @@ async function renderChecklist(){
       const key = `${d.divida_id}-${d.parcela_atual ?? 'entrada'}`;
       const domId = 'chk-d-' + key;
       const checked = confirmSet.has('divida|'+key);
+      const dueDay = d.dia_vencimento || dividaDueMap[d.divida_id];
       return `<div class="check-row"><input type="checkbox" id="${domId}" ${checked?'checked':''} onchange="toggleChecklist('divida','${key}', this.checked)">
-        <label for="${domId}" class="${checked?'done':''}">${d.descricao}</label></div>`;
+        <label for="${domId}" class="${checked?'done':''}">${d.descricao}${dueStatusHtml(dueDay, mes.referencia, checked)}</label></div>`;
     }).join('');
   }
   document.getElementById('checklist-list').innerHTML = html || '<div class="empty-state">Nenhum item vigente neste mês.</div>';
@@ -1472,14 +1535,15 @@ async function renderDividas(){
       {key:'valor_parcela', label:'Valor da parcela', type:'currency'},
       {key:'total_parcelas', label:'Total de parcelas', type:'number'},
       {key:'entrada', label:'Entrada', type:'currency'},
+      {key:'dia_vencimento', label:'Dia de vencimento', type:'number'},
       {key:'mes_inicio_id', label:'Mês de início', type:'month'},
       {key:'quitada', label:'Quitada antecipadamente', type:'checkbox'},
-    ], { nome:d.nome, valor_parcela:d.valor_parcela, total_parcelas:d.total_parcelas, entrada:d.entrada, mes_inicio_id:(mesesById[d.mes_inicio_id]?.referencia||'').slice(0,7), quitada:d.quitada }, ['mes_inicio_id']);
+    ], { nome:d.nome, valor_parcela:d.valor_parcela, total_parcelas:d.total_parcelas, entrada:d.entrada, dia_vencimento:d.dia_vencimento || '', mes_inicio_id:(mesesById[d.mes_inicio_id]?.referencia||'').slice(0,7), quitada:d.quitada }, ['mes_inicio_id']);
     const quitarBtn = !d.quitada ? `<button class="icon-btn" title="Marcar como quitada" onclick="quitarDivida('${d.id}')">✓</button>` : '';
     return `<tr><td>${d.nome}</td><td class="num">${parcelaTxt}</td>
-      <td class="num">${fmtBRL(d.valor_parcela)}</td><td class="num">${fmtBRL(d.entrada)}</td><td>${status}</td>
+      <td class="num">${fmtBRL(d.valor_parcela)}</td><td class="num">${fmtBRL(d.entrada)}</td><td>${fmtDueDay(d.dia_vencimento)}</td><td>${status}</td>
       <td class="row-actions">${quitarBtn}${editBtn(key)}${delBtn('dividas', d.id)}</td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty-state">Nenhuma dívida cadastrada.</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="empty-state">Nenhuma dívida cadastrada.</td></tr>';
 }
 async function quitarDivida(id){
   if(!confirm('Marcar esta dívida como quitada? As parcelas futuras deixarão de aparecer.')) return;
@@ -1492,14 +1556,15 @@ document.getElementById('btn-add-divida').onclick = async () => {
   const valor_parcela = getCurrencyValue(document.getElementById('divida-valor'));
   const total_parcelas = parseInt(document.getElementById('divida-total').value) || 1;
   const entrada = getCurrencyValue(document.getElementById('divida-entrada'));
+  const dia_vencimento = getDueDayValue(document.getElementById('divida-vencimento'));
   const mesInicioVal = readMonthYear(document.getElementById('divida-mes-inicio-wrap'), 'divida-mes-inicio');
   if(!nome || !valor_parcela || !mesInicioVal){ toast('Preencha nome, valor e mês de início.'); return; }
   const mesInicio = await ensureMesExists(mesInicioVal);
-  const { error } = await db.from('dividas').insert({ nome, valor_parcela, total_parcelas, entrada, mes_inicio_id: mesInicio.id });
+  const { error } = await insertWithOptionalDue('dividas', { nome, valor_parcela, total_parcelas, entrada, dia_vencimento, mes_inicio_id: mesInicio.id });
   if(error){ toast('Erro: ' + error.message); return; }
   await ensureMesExists(addMonths(mesInicio.referencia, total_parcelas-1));
   document.getElementById('divida-nome').value=''; document.getElementById('divida-valor').value='';
-  document.getElementById('divida-entrada').value=''; document.getElementById('divida-total').value='1';
+  document.getElementById('divida-entrada').value=''; document.getElementById('divida-total').value='1'; document.getElementById('divida-vencimento').value='';
   renderDividas();
 };
 
@@ -1515,23 +1580,25 @@ async function renderOrcamento(){
       {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
       {key:'valor_esperado', label:'Valor esperado', type:'currency'},
       {key:'tipo', label:'Tipo', type:'select', options:[{value:'variavel',label:'Variável'},{value:'fixo',label:'Fixo'}]},
+      {key:'dia_vencimento', label:'Dia de vencimento', type:'number'},
       {key:'mes_vigencia_id', label:'Vigente a partir de', type:'month'},
-    ], { categoria_id:o.categoria_id, valor_esperado:o.valor_esperado, tipo:o.tipo, mes_vigencia_id:(o.meses?.referencia||'').slice(0,7) }, ['mes_vigencia_id']);
+    ], { categoria_id:o.categoria_id, valor_esperado:o.valor_esperado, tipo:o.tipo, dia_vencimento:o.dia_vencimento || '', mes_vigencia_id:(o.meses?.referencia||'').slice(0,7) }, ['mes_vigencia_id']);
     return `<tr><td>${o.categorias?.nome||''}</td><td class="num">${fmtBRL(o.valor_esperado)}</td>
-      <td><span class="tag">${o.tipo==='fixo'?'Fixo':'Variável'}</span></td><td>${fmtMonth(o.meses?.referencia||'')}</td>
+      <td><span class="tag">${o.tipo==='fixo'?'Fixo':'Variável'}</span></td><td>${fmtDueDay(o.dia_vencimento)}</td><td>${fmtMonth(o.meses?.referencia||'')}</td>
       <td class="row-actions">${editBtn(key)}${delBtn('orcamentos', o.id)}</td></tr>`;
-  }).join('') || '<tr><td colspan="5" class="empty-state">Nenhum orçamento definido ainda.</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty-state">Nenhum orçamento definido ainda.</td></tr>';
 }
 document.getElementById('btn-add-orc').onclick = async () => {
   const categoria_id = document.getElementById('orc-categoria').value;
   const valor_esperado = getCurrencyValue(document.getElementById('orc-valor'));
   const tipo = document.getElementById('orc-tipo').value;
+  const dia_vencimento = getDueDayValue(document.getElementById('orc-vencimento'));
   const vigenciaVal = readMonthYear(document.getElementById('orc-vigencia-wrap'), 'orc-vigencia');
   if(!categoria_id || !valor_esperado || !vigenciaVal){ toast('Preencha categoria, valor e mês de vigência.'); return; }
   const mes = await ensureMesExists(vigenciaVal);
-  const { error } = await db.from('orcamentos').insert({ categoria_id, valor_esperado, tipo, mes_vigencia_id: mes.id });
+  const { error } = await insertWithOptionalDue('orcamentos', { categoria_id, valor_esperado, tipo, dia_vencimento, mes_vigencia_id: mes.id });
   if(error){ toast('Erro: ' + error.message); return; }
-  document.getElementById('orc-valor').value = '';
+  document.getElementById('orc-valor').value = ''; document.getElementById('orc-vencimento').value = '';
   renderOrcamento();
 };
 
