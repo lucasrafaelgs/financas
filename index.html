@@ -184,6 +184,8 @@
   .orc-fill{display:block;height:100%;min-width:3px;background:var(--ink);border-radius:5px;}
   .orc-fill.over{background:var(--neg);}
   .orc-values{font-size:12px;white-space:nowrap;}
+  .orc-balance{font-size:11.5px;margin-top:5px;color:var(--pos);}
+  .orc-balance.over{color:var(--neg);}
 
   .orc-group-title{font-size:12px;font-weight:600;margin:16px 0 6px;color:var(--ink-soft);}
   .orc-group-title:first-child{margin-top:0;}
@@ -1286,18 +1288,25 @@ async function renderSaldoComparativoChart(resumo){
 async function renderOrcamentoComparativo(){
   const mes = currentMes();
   const { data: orcamentos } = await db.from('vw_orcamento_vigente_mes').select('*').eq('mes_id', mes.id).eq('tipo','variavel').gt('valor_esperado', 0);
-  const { data: consolidado } = await db.from('vw_saidas_consolidado').select('categoria_id,valor').eq('mes_id', mes.id);
+  const nextMes = await ensureMesExists(addMonths(mes.referencia, 1));
+  const [{ data: saidasDiretas }, { data: itensCartao }] = await Promise.all([
+    db.from('saidas').select('categoria_id,valor').eq('mes_id', mes.id),
+    db.from('vw_cartao_fatura_itens').select('categoria_id,valor').eq('fatura_mes_id', nextMes.id),
+  ]);
   const gasto = {};
-  (consolidado||[]).forEach(c=>{ if(c.categoria_id) gasto[c.categoria_id] = (gasto[c.categoria_id]||0) + Number(c.valor); });
+  [...(saidasDiretas||[]), ...(itensCartao||[])].forEach(c=>{ if(c.categoria_id) gasto[c.categoria_id] = (gasto[c.categoria_id]||0) + Number(c.valor); });
   const el = document.getElementById('orcamento-comparativo');
   if(!orcamentos || orcamentos.length===0){ el.innerHTML = '<div class="empty-state">Nenhum orçamento definido para este mês. Configure na aba Orçamento.</div>'; return; }
   el.innerHTML = orcamentos.map(o=>{
     const g = gasto[o.categoria_id] || 0;
     const pct = o.valor_esperado>0 ? (g/o.valor_esperado)*100 : 0;
     const nome = state.categorias.find(c=>c.id===o.categoria_id)?.nome || '';
+    const diff = g - Number(o.valor_esperado);
+    const over = diff > 0;
     return `<div class="orc-row">
       <div class="orc-top"><span class="orc-label">${nome}</span><span class="orc-values num">${fmtBRL(g)} / ${fmtBRL(o.valor_esperado)}</span></div>
       <div class="orc-bar"><div class="orc-fill ${pct>100?'over':''}" style="width:${Math.min(100,pct)}%"></div></div>
+      <div class="orc-balance ${over?'over':''}">${over ? 'Excedente' : 'Restante'}: ${fmtBRL(Math.abs(diff))}</div>
     </div>`;
   }).join('');
 }
