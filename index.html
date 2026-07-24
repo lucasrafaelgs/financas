@@ -114,6 +114,18 @@
   canvas{max-height:260px;}
   .chart-wrap{position:relative;width:100%;height:260px;}
   .chart-wrap canvas{display:block;max-width:100%;max-height:none;}
+  .chart-html-tooltip{position:absolute;z-index:5;pointer-events:none;opacity:0;background:#fff;border:1px solid var(--border);box-shadow:0 10px 24px rgba(0,0,0,.12);border-radius:8px;padding:10px 12px;min-width:190px;max-width:min(280px, calc(100vw - 32px));font-size:11.5px;color:var(--ink);transition:opacity .12s ease;}
+  .chart-html-tooltip.show{opacity:1;}
+  .chart-tooltip-title{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:700;margin-bottom:8px;white-space:nowrap;}
+  .chart-tooltip-title-left{display:flex;align-items:center;gap:7px;min-width:0;}
+  .chart-tooltip-title-name{overflow:hidden;text-overflow:ellipsis;}
+  .chart-tooltip-title-value{font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .chart-tooltip-swatch{width:10px;height:10px;border-radius:2px;flex:0 0 auto;}
+  .chart-tooltip-row{display:flex;align-items:flex-start;gap:7px;justify-content:space-between;color:var(--ink-soft);line-height:1.35;margin-top:4px;}
+  .chart-tooltip-row-left{display:flex;align-items:flex-start;gap:7px;min-width:0;}
+  .chart-tooltip-marker{color:var(--ink-faint);flex:0 0 auto;}
+  .chart-tooltip-name{min-width:0;overflow:hidden;text-overflow:ellipsis;}
+  .chart-tooltip-value{color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;}
   .chart-pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
   .chart-pair > div{min-width:0;}
   .chart-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:8px;}
@@ -324,8 +336,8 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <div class="panel-title">Saídas no débito e no crédito por categoria</div>
-              <div class="panel-sub">Débito do mês selecionado e crédito da próxima fatura</div>
+              <div class="panel-title">Saídas no débito e no crédito por grupo</div>
+              <div class="panel-sub">Passe o mouse sobre um grupo para ver as categorias em ordem decrescente</div>
             </div>
           </div>
           <div class="chart-pair">
@@ -391,6 +403,12 @@
             <div class="form-field"><label>Descrição</label><input id="saida-descricao" placeholder="Opcional"></div>
             <div class="form-field"><label>Valor</label><input id="saida-valor" type="text" placeholder="R$ 0,00"></div>
             <button class="btn btn-primary" id="btn-add-saida">Adicionar</button>
+          </div>
+          <div class="form-row filter-row">
+            <div class="form-field"><label>Filtrar grupo</label><select id="filtro-saida-grupo"></select></div>
+            <div class="form-field"><label>Filtrar categoria</label><select id="filtro-saida-categoria"></select></div>
+            <div class="form-field"><label>Buscar descrição</label><input id="filtro-saida-texto" placeholder="Ex: mercado"></div>
+            <button class="btn btn-ghost" id="btn-limpar-filtros-saida">Limpar filtros</button>
           </div>
           <div class="table-scroll"><table>
             <thead><tr><th>Data</th><th>Descrição</th><th>Grupo</th><th>Categoria</th><th class="num">Valor</th><th></th></tr></thead>
@@ -612,7 +630,7 @@ const SUPABASE_KEY = 'sb_publishable_T8LDo65Z5-zFFgVkLBQtSQ_mSwGvkG9';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ==================== STATE ==================== */
-let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {}, configCategoriaSort: 'categoria', kpiValuesHidden: false, grupoPaymentMode: 'debito' };
+let state = { meses: [], currentMesIdx: -1, grupos: [], categorias: [], fontes: [], charts: {}, configCategoriaSort: 'categoria', kpiValuesHidden: false, grupoPaymentMode: 'debito', lancamentoFilters: { grupoId:'', categoriaId:'', texto:'' } };
 let editRegistry = {}; let editCounter = 0;
 state.kpiValuesHidden = localStorage.getItem('kpiValuesHidden') === '1';
 
@@ -962,6 +980,28 @@ document.querySelectorAll('#grupo-payment-mode .seg-btn').forEach(btn=>{
     await renderDashboard();
   });
 });
+document.getElementById('filtro-saida-grupo').onchange = async e => {
+  state.lancamentoFilters.grupoId = e.target.value;
+  const cat = document.getElementById('filtro-saida-categoria');
+  const selectedCategory = state.categorias.find(c=>c.id===state.lancamentoFilters.categoriaId);
+  if(state.lancamentoFilters.grupoId && selectedCategory && selectedCategory.grupo_id !== state.lancamentoFilters.grupoId) state.lancamentoFilters.categoriaId = '';
+  cat.innerHTML = saidaFilterCategoriaOptionsHtml();
+  cat.value = state.lancamentoFilters.categoriaId;
+  await renderLancamentos();
+};
+document.getElementById('filtro-saida-categoria').onchange = async e => {
+  state.lancamentoFilters.categoriaId = e.target.value;
+  await renderLancamentos();
+};
+document.getElementById('filtro-saida-texto').oninput = async e => {
+  state.lancamentoFilters.texto = e.target.value.trim().toLocaleLowerCase('pt-BR');
+  await renderLancamentos();
+};
+document.getElementById('btn-limpar-filtros-saida').onclick = async () => {
+  state.lancamentoFilters = { grupoId:'', categoriaId:'', texto:'' };
+  populateSaidaFilterSelects();
+  await renderLancamentos();
+};
 document.getElementById('btn-toggle-kpi-values').onclick = () => {
   state.kpiValuesHidden = !state.kpiValuesHidden;
   localStorage.setItem('kpiValuesHidden', state.kpiValuesHidden ? '1' : '0');
@@ -997,10 +1037,30 @@ function categoriaOptionsHtml(){
     return `<optgroup label="${g.nome}">${cats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')}</optgroup>`;
   }).join('');
 }
+function saidaFilterCategoriaOptionsHtml(){
+  const grupoId = state.lancamentoFilters.grupoId;
+  const cats = sortedCategorias().filter(c=>!grupoId || c.grupo_id===grupoId);
+  const grouped = grupoId
+    ? cats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')
+    : categoriaOptionsHtml();
+  return `<option value="">Todas</option>${grouped}`;
+}
+function populateSaidaFilterSelects(){
+  const grupo = document.getElementById('filtro-saida-grupo');
+  const categoria = document.getElementById('filtro-saida-categoria');
+  const texto = document.getElementById('filtro-saida-texto');
+  if(!grupo || !categoria || !texto) return;
+  grupo.innerHTML = '<option value="">Todos</option>' + sortedGrupos().map(g=>`<option value="${g.id}">${g.nome}</option>`).join('');
+  grupo.value = state.lancamentoFilters.grupoId;
+  categoria.innerHTML = saidaFilterCategoriaOptionsHtml();
+  categoria.value = state.lancamentoFilters.categoriaId;
+  texto.value = state.lancamentoFilters.texto;
+}
 function populateStaticSelects(){
   document.getElementById('saida-grupo').innerHTML = sortedGrupos().map(g=>`<option value="${g.id}">${g.nome}</option>`).join('');
   refreshCategoriaSelectSaida();
   document.getElementById('saida-grupo').onchange = refreshCategoriaSelectSaida;
+  populateSaidaFilterSelects();
 
   document.getElementById('entrada-fonte').innerHTML = '<option value="">Extra</option>' + state.fontes.map(f=>`<option value="${f.id}">${f.nome}</option>`).join('');
   document.getElementById('entrada-fonte').onchange = () => {
@@ -1132,6 +1192,76 @@ function chartMoneyOptions(stacked){
     }
   };
 }
+function getChartHtmlTooltip(chart){
+  const parent = chart.canvas.parentNode;
+  let tooltip = parent.querySelector('.chart-html-tooltip');
+  if(!tooltip){
+    tooltip = document.createElement('div');
+    tooltip.className = 'chart-html-tooltip';
+    parent.appendChild(tooltip);
+  }
+  return tooltip;
+}
+function renderGroupChartTooltip(context){
+  const { chart, tooltip } = context;
+  const el = getChartHtmlTooltip(chart);
+  if(tooltip.opacity === 0){
+    el.classList.remove('show');
+    return;
+  }
+  const point = tooltip.dataPoints?.[0];
+  const slice = point?.dataset?.slices?.[point.dataIndex];
+  if(!slice){
+    el.classList.remove('show');
+    return;
+  }
+  const total = point.dataset.data.reduce((sum, value)=>sum + Number(value || 0), 0);
+  const share = total ? ` (${(slice.valor / total * 100).toFixed(0)}%)` : '';
+  el.replaceChildren();
+  const title = document.createElement('div');
+  title.className = 'chart-tooltip-title';
+  const titleLeft = document.createElement('div');
+  titleLeft.className = 'chart-tooltip-title-left';
+  const swatch = document.createElement('span');
+  swatch.className = 'chart-tooltip-swatch';
+  swatch.style.background = slice.color;
+  const titleName = document.createElement('span');
+  titleName.className = 'chart-tooltip-title-name';
+  titleName.textContent = slice.label;
+  const titleValue = document.createElement('span');
+  titleValue.className = 'chart-tooltip-title-value';
+  titleValue.textContent = `${fmtBRL(slice.valor)}${share}`;
+  titleLeft.append(swatch, titleName);
+  title.append(titleLeft, titleValue);
+  el.append(title);
+  slice.detalhes.forEach(item=>{
+    const row = document.createElement('div');
+    row.className = 'chart-tooltip-row';
+    const rowLeft = document.createElement('div');
+    rowLeft.className = 'chart-tooltip-row-left';
+    const marker = document.createElement('span');
+    marker.className = 'chart-tooltip-marker';
+    marker.textContent = '•';
+    const name = document.createElement('span');
+    name.className = 'chart-tooltip-name';
+    name.textContent = item.nome;
+    const value = document.createElement('span');
+    value.className = 'chart-tooltip-value';
+    value.textContent = fmtBRL(item.valor);
+    rowLeft.append(marker, name);
+    row.append(rowLeft, value);
+    el.append(row);
+  });
+  const tooltipWidth = 280;
+  const left = Math.max(8, Math.min(tooltip.caretX + 12, chart.width - tooltipWidth - 8));
+  const tooltipHeight = el.offsetHeight || 120;
+  const top = tooltip.caretY + tooltipHeight + 20 > chart.height
+    ? Math.max(8, tooltip.caretY - tooltipHeight - 12)
+    : tooltip.caretY + 12;
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  el.classList.add('show');
+}
 const centerTotalPlugin = {
   id:'centerTotal',
   afterDraw(chart, args, opts){
@@ -1189,31 +1319,44 @@ async function renderSaidasCategoriasChart(resumo, itensCartao){
   const ctxCartao = document.getElementById('chart-cartao-categorias');
   if(typeof Chart === 'undefined'){ [ctx, ctxCartao].forEach(c=>c.replaceWith(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Não foi possível carregar a biblioteca de gráficos (Chart.js). Recarregue a página.'}))); return; }
   const palette = ['#2b2b28','#2f7a4d','#4f6f91','#b56f2f','#7a5c2f','#8a5d7a','#5f8a82','#9a4f3f','#5b5f66','#6f7f45','#9b6f9f','#a4a39b'];
-  const porCategoria = {};
-  resumo.diretas.forEach(s=>{
-    const nome = state.categorias.find(c=>c.id===s.categoria_id)?.nome || 'Sem categoria';
-    porCategoria[nome] = (porCategoria[nome] || 0) + Number(s.valor);
-  });
-  const fatias = Object.entries(porCategoria)
-    .sort((a,b)=>b[1]-a[1])
-    .map(([label, valor], idx)=>({ label, valor, color:palette[idx % palette.length] }))
-    .filter(f=>Number(f.valor) > 0);
-  const cartaoPorCategoria = {};
-  (itensCartao||[]).forEach(i=>{
-    const nome = state.categorias.find(c=>c.id===i.categoria_id)?.nome || 'Sem categoria';
-    cartaoPorCategoria[nome] = (cartaoPorCategoria[nome] || 0) + Number(i.valor);
-  });
-  const fatiasCartao = Object.entries(cartaoPorCategoria)
-    .sort((a,b)=>b[1]-a[1])
-    .map(([label, valor], idx)=>({ label, valor, color:palette[idx % palette.length] }))
-    .filter(f=>Number(f.valor) > 0);
+  const catById = Object.fromEntries(state.categorias.map(c=>[c.id, c]));
+  const grupoById = Object.fromEntries(state.grupos.map(g=>[g.id, g]));
+  function buildGroupSlices(rows, groupResolver){
+    const groups = {};
+    rows.forEach(row=>{
+      const valor = Number(row.valor) || 0;
+      if(valor <= 0) return;
+      const categoria = catById[row.categoria_id];
+      const grupoId = groupResolver(row, categoria) || categoria?.grupo_id || 'sem-grupo';
+      const grupoNome = grupoById[grupoId]?.nome || 'Sem grupo';
+      const categoriaNome = categoria?.nome || 'Sem categoria';
+      if(!groups[grupoId]) groups[grupoId] = { label:grupoNome, valor:0, categorias:{} };
+      groups[grupoId].valor += valor;
+      groups[grupoId].categorias[categoriaNome] = (groups[grupoId].categorias[categoriaNome] || 0) + valor;
+    });
+    return Object.values(groups)
+      .sort((a,b)=>b.valor-a.valor)
+      .map((grupo, idx)=>({
+        ...grupo,
+        color:palette[idx % palette.length],
+        detalhes:Object.entries(grupo.categorias)
+          .sort((a,b)=>b[1]-a[1])
+          .map(([nome, valor])=>({nome, valor}))
+      }))
+      .filter(f=>Number(f.valor) > 0);
+  }
+  const fatias = buildGroupSlices(resumo.diretas, row=>row.grupo_id);
+  const fatiasCartao = buildGroupSlices(itensCartao || [], (row, categoria)=>categoria?.grupo_id);
   const doughnutOptions = {
     responsive:true,
     maintainAspectRatio:false,
     cutout:'58%',
     plugins:{
       legend:{ display:false },
-      tooltip:{ callbacks:{ label:ctx=>`${ctx.label}: ${fmtBRL(ctx.parsed)}` } }
+      tooltip:{
+        enabled:false,
+        external:renderGroupChartTooltip
+      }
     }
   };
   const totalDebito = fatias.reduce((s,f)=>s+Number(f.valor),0);
@@ -1224,6 +1367,7 @@ async function renderSaidasCategoriasChart(resumo, itensCartao){
     data:{
       labels:fatias.map(f=>f.label),
       datasets:[{
+        slices:fatias,
         data:fatias.map(f=>f.valor),
         backgroundColor:fatias.map(f=>f.color),
         borderColor:'#ffffff',
@@ -1239,6 +1383,7 @@ async function renderSaidasCategoriasChart(resumo, itensCartao){
     data:{
       labels:fatiasCartao.map(f=>f.label),
       datasets:[{
+        slices:fatiasCartao,
         data:fatiasCartao.map(f=>f.valor),
         backgroundColor:fatiasCartao.map(f=>f.color),
         borderColor:'#ffffff',
@@ -1314,7 +1459,8 @@ async function renderOrcamentoComparativo(){
 /* ---------- LANÇAMENTOS ---------- */
 async function renderLancamentos(){
   const mes = currentMes();
-  document.getElementById('saida-data').value = defaultDateForMes(mes);
+  const saidaData = document.getElementById('saida-data');
+  if(!saidaData.value || saidaData.value.slice(0,7) !== mes.referencia.slice(0,7)) saidaData.value = defaultDateForMes(mes);
 
   const { data: entradas } = await db.from('entradas').select('*, fontes_renda(nome)').eq('mes_id', mes.id).order('created_at');
   document.getElementById('tbl-entradas').innerHTML = (entradas||[]).map(e=>{
@@ -1329,7 +1475,16 @@ async function renderLancamentos(){
   }).join('') || '<tr><td colspan="4" class="empty-state">Nenhuma entrada lançada neste mês.</td></tr>';
 
   const { data: saidas } = await db.from('saidas').select('*, grupos(nome), categorias(nome)').eq('mes_id', mes.id).order('data');
-  document.getElementById('tbl-saidas').innerHTML = (saidas||[]).map(s=>{
+  const filtros = state.lancamentoFilters;
+  const textoFiltro = filtros.texto.trim().toLocaleLowerCase('pt-BR');
+  const saidasFiltradas = (saidas||[]).filter(s=>{
+    if(filtros.grupoId && s.grupo_id !== filtros.grupoId) return false;
+    if(filtros.categoriaId && s.categoria_id !== filtros.categoriaId) return false;
+    if(textoFiltro && !(s.descricao || '').toLocaleLowerCase('pt-BR').includes(textoFiltro)) return false;
+    return true;
+  });
+  const hasFilters = !!(filtros.grupoId || filtros.categoriaId || textoFiltro);
+  document.getElementById('tbl-saidas').innerHTML = saidasFiltradas.map(s=>{
     const key = registerEdit('saidas', s.id, 'Editar saída', [
       {key:'grupo_id', label:'Grupo', type:'select', options: sortedGrupos().map(g=>({value:g.id,label:g.nome}))},
       {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
@@ -1341,7 +1496,7 @@ async function renderLancamentos(){
       <td>${s.grupos?.nome||''}</td><td>${s.categorias?.nome||''}</td>
       <td class="num">${fmtBRL(s.valor)}</td>
       <td class="row-actions">${editBtn(key)}${delBtn('saidas', s.id)}</td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty-state">Nenhuma saída lançada neste mês.</td></tr>';
+  }).join('') || `<tr><td colspan="6" class="empty-state">${hasFilters ? 'Nenhuma saída encontrada com esses filtros.' : 'Nenhuma saída lançada neste mês.'}</td></tr>`;
 }
 function defaultDateForMes(mes){
   const today = new Date();
