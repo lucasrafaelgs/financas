@@ -203,6 +203,11 @@
   .orc-group-title:first-child{margin-top:0;}
   .orc-cat-row{display:grid;grid-template-columns:1fr 150px;align-items:center;gap:12px;padding:6px 0;}
   .orc-cat-row input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-alt);}
+  .budget-main{font-weight:700;}
+  .budget-sub{font-size:11.5px;color:var(--ink-soft);margin-top:3px;}
+  .budget-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
+  .budget-action-group{display:flex;gap:4px;align-items:center;}
+  .budget-action-label{font-size:10.5px;color:var(--ink-faint);}
 
   /* modal */
   .modal-backdrop{position:fixed;inset:0;background:rgba(20,20,18,.45);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px;}
@@ -521,7 +526,7 @@
         <div class="panel-head">
           <div>
             <div class="panel-title">Novo valor esperado</div>
-            <div class="panel-sub">Vale a partir do mês escolhido, pra frente, até você lançar um novo valor pra mesma categoria. Só itens "Variável" entram no comparativo do Dashboard; ambos aparecem no Checklist.</div>
+            <div class="panel-sub">Vale a partir do mês escolhido, pra frente, até você lançar um novo valor pra mesma categoria. Só itens "Variável" entram no comparativo do Dashboard; itens "Fixo" aparecem no Checklist.</div>
           </div>
         </div>
         <div class="form-row">
@@ -533,7 +538,7 @@
           <button class="btn btn-primary" id="btn-add-orc">Adicionar</button>
         </div>
         <div class="table-scroll"><table>
-          <thead><tr><th>Categoria</th><th class="num">Valor esperado</th><th>Tipo</th><th>Vencimento</th><th>Vigente a partir de</th><th></th></tr></thead>
+          <thead><tr><th>Categoria</th><th class="num">Valor atual</th><th>Tipo</th><th>Vencimento</th><th>Próxima alteração</th><th></th></tr></thead>
           <tbody id="tbl-orcamento"></tbody>
         </table></div>
       </div>
@@ -1091,13 +1096,32 @@ function refreshCategoriaSelectSaida(){
   descInput.placeholder = isOutros ? 'Descrição (obrigatória)' : 'Opcional';
   descInput.dataset.required = isOutros ? '1' : '0';
 }
+async function getOrcamentosVigentes(mes){
+  const { data, error } = await db.from('orcamentos').select('*, meses(referencia)');
+  if(error) throw new Error('orcamentos: ' + error.message);
+  const vigentesPorCategoria = {};
+  (data||[]).forEach(o=>{
+    const referencia = o.meses?.referencia;
+    if(!referencia || referencia > mes.referencia) return;
+    const atual = vigentesPorCategoria[o.categoria_id];
+    if(!atual || referencia > atual.meses.referencia || (referencia === atual.meses.referencia && o.created_at > atual.created_at)){
+      vigentesPorCategoria[o.categoria_id] = o;
+    }
+  });
+  return Object.values(vigentesPorCategoria).map(o=>({
+    ...o,
+    mes_id: mes.id,
+    orcamento_id: o.id,
+    mes_vigencia_referencia: o.meses?.referencia,
+  }));
+}
 
 /* ---------- DASHBOARD ---------- */
 async function getMonthlySummary(mes){
-  const [{ data: consolidado }, { data: entradas }, { data: orcamentos }] = await Promise.all([
+  const [{ data: consolidado }, { data: entradas }, orcamentos] = await Promise.all([
     db.from('vw_saidas_consolidado').select('*').eq('mes_id', mes.id),
     db.from('entradas').select('*').eq('mes_id', mes.id),
-    db.from('vw_orcamento_vigente_mes').select('valor_esperado').eq('mes_id', mes.id).gt('valor_esperado', 0),
+    getOrcamentosVigentes(mes),
   ]);
   const totalEntradas = (entradas||[]).reduce((s,e)=>s+Number(e.valor),0);
   const totalRendaCadastrada = (state.fontes||[]).reduce((s,f)=>s+Number(f.valor_padrao),0);
@@ -1107,7 +1131,7 @@ async function getMonthlySummary(mes){
   const totalDiretas = diretas.reduce((s,c)=>s+Number(c.valor),0);
   const totalDividas = dividasLinhas.reduce((s,c)=>s+Number(c.valor),0);
   const totalCartao = cartaoLinhas.reduce((s,c)=>s+Number(c.valor),0);
-  const totalOrcamento = (orcamentos||[]).reduce((s,o)=>s+Number(o.valor_esperado),0);
+  const totalOrcamento = (orcamentos||[]).filter(o=>Number(o.valor_esperado) > 0).reduce((s,o)=>s+Number(o.valor_esperado),0);
   const saldoRealizado = totalEntradas - totalDiretas - totalDividas - totalCartao;
   const baseProjetada = Math.max(totalEntradas, totalRendaCadastrada);
   const saldoRealizadoComRenda = baseProjetada - totalDiretas - totalDividas - totalCartao;
@@ -1432,7 +1456,7 @@ async function renderSaldoComparativoChart(resumo){
 
 async function renderOrcamentoComparativo(){
   const mes = currentMes();
-  const { data: orcamentos } = await db.from('vw_orcamento_vigente_mes').select('*').eq('mes_id', mes.id).eq('tipo','variavel').gt('valor_esperado', 0);
+  const orcamentos = (await getOrcamentosVigentes(mes)).filter(o=>o.tipo==='variavel' && Number(o.valor_esperado) > 0);
   const nextMes = await ensureMesExists(addMonths(mes.referencia, 1));
   const [{ data: saidasDiretas }, { data: itensCartao }] = await Promise.all([
     db.from('saidas').select('categoria_id,valor').eq('mes_id', mes.id),
@@ -1595,11 +1619,12 @@ async function loadDueDayMap(table, ids){
 }
 async function renderChecklist(){
   const mes = currentMes();
-  const [{data:orcs}, {data:dividasMes}, {data:confirmados}] = await Promise.all([
-    db.from('vw_orcamento_vigente_mes').select('*').eq('mes_id', mes.id).eq('tipo','fixo'),
+  const [orcsVigentes, {data:dividasMes}, {data:confirmados}] = await Promise.all([
+    getOrcamentosVigentes(mes),
     db.from('vw_dividas_mes').select('*').eq('mes_id', mes.id),
     db.from('checklist_confirmacoes').select('*').eq('mes_id', mes.id),
   ]);
+  const orcs = orcsVigentes.filter(o=>o.tipo==='fixo');
   const [orcDueMap, dividaDueMap] = await Promise.all([
     loadDueDayMap('orcamentos', [...new Set((orcs||[]).map(o=>o.orcamento_id).filter(Boolean))]),
     loadDueDayMap('dividas', [...new Set((dividasMes||[]).map(d=>d.divida_id).filter(Boolean))]),
@@ -1733,23 +1758,53 @@ document.getElementById('btn-add-divida').onclick = async () => {
 };
 
 /* ---------- ORÇAMENTO ---------- */
+function registerOrcamentoEdit(o, title){
+  return registerEdit('orcamentos', o.id, title, [
+    {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
+    {key:'valor_esperado', label:'Valor esperado', type:'currency'},
+    {key:'tipo', label:'Tipo', type:'select', options:[{value:'variavel',label:'Variável'},{value:'fixo',label:'Fixo'}]},
+    {key:'dia_vencimento', label:'Dia de vencimento', type:'number'},
+    {key:'mes_vigencia_id', label:'Vigente a partir de', type:'month'},
+  ], { categoria_id:o.categoria_id, valor_esperado:o.valor_esperado, tipo:o.tipo, dia_vencimento:o.dia_vencimento || '', mes_vigencia_id:(o.meses?.referencia||'').slice(0,7) }, ['mes_vigencia_id']);
+}
+function orcamentoActionGroup(label, item){
+  if(!item) return '';
+  const key = registerOrcamentoEdit(item, `Editar ${label.toLowerCase()}`);
+  return `<span class="budget-action-group"><span class="budget-action-label">${label}</span>${editBtn(key)}${delBtn('orcamentos', item.id)}</span>`;
+}
 async function renderOrcamento(){
   const { data } = await db.from('orcamentos').select('*, categorias(nome), meses(referencia)').order('created_at', {ascending:false});
-  const rows = (data||[]).sort((a,b)=>
-    (a.categorias?.nome||'').localeCompare(b.categorias?.nome||'') ||
-    (b.meses?.referencia||'').localeCompare(a.meses?.referencia||'')
-  );
-  document.getElementById('tbl-orcamento').innerHTML = rows.map(o=>{
-    const key = registerEdit('orcamentos', o.id, 'Editar orçamento', [
-      {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
-      {key:'valor_esperado', label:'Valor esperado', type:'currency'},
-      {key:'tipo', label:'Tipo', type:'select', options:[{value:'variavel',label:'Variável'},{value:'fixo',label:'Fixo'}]},
-      {key:'dia_vencimento', label:'Dia de vencimento', type:'number'},
-      {key:'mes_vigencia_id', label:'Vigente a partir de', type:'month'},
-    ], { categoria_id:o.categoria_id, valor_esperado:o.valor_esperado, tipo:o.tipo, dia_vencimento:o.dia_vencimento || '', mes_vigencia_id:(o.meses?.referencia||'').slice(0,7) }, ['mes_vigencia_id']);
-    return `<tr><td>${o.categorias?.nome||''}</td><td class="num">${fmtBRL(o.valor_esperado)}</td>
-      <td><span class="tag">${o.tipo==='fixo'?'Fixo':'Variável'}</span></td><td>${fmtDueDay(o.dia_vencimento)}</td><td>${fmtMonth(o.meses?.referencia||'')}</td>
-      <td class="row-actions">${editBtn(key)}${delBtn('orcamentos', o.id)}</td></tr>`;
+  const currentRef = currentMes()?.referencia || START_REF;
+  const groups = {};
+  (data||[]).forEach(o=>{
+    const key = o.categoria_id || o.id;
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(o);
+  });
+  const rows = Object.values(groups).map(items=>{
+    const sorted = items.sort((a,b)=>{
+      const refCmp = (a.meses?.referencia||'').localeCompare(b.meses?.referencia||'');
+      if(refCmp) return refCmp;
+      return (a.created_at||'').localeCompare(b.created_at||'');
+    });
+    const activeIndex = sorted.reduce((found, item, idx)=>
+      (item.meses?.referencia || '') <= currentRef ? idx : found
+    , -1);
+    const active = activeIndex >= 0 ? sorted[activeIndex] : sorted[0];
+    const upcoming = sorted.find((item, idx)=>idx > sorted.indexOf(active) && (item.meses?.referencia || '') > currentRef);
+    return { active, upcoming, categoriaNome: active.categorias?.nome || '' };
+  }).sort((a,b)=>a.categoriaNome.localeCompare(b.categoriaNome,'pt-BR'));
+  document.getElementById('tbl-orcamento').innerHTML = rows.map(row=>{
+    const active = row.active;
+    const upcoming = row.upcoming;
+    const activeRef = active.meses?.referencia || '';
+    const activeLabel = activeRef > currentRef ? `Programado para ${fmtMonth(activeRef)}` : `Atual desde ${fmtMonth(activeRef)}`;
+    const upcomingHtml = upcoming
+      ? `<div class="budget-main">${fmtBRL(upcoming.valor_esperado)}</div><div class="budget-sub">A partir de ${fmtMonth(upcoming.meses?.referencia||'')}</div>`
+      : '<span class="tag">Sem alteração</span>';
+    return `<tr><td>${row.categoriaNome}</td><td class="num"><div class="budget-main">${fmtBRL(active.valor_esperado)}</div><div class="budget-sub">${activeLabel}</div></td>
+      <td><span class="tag">${active.tipo==='fixo'?'Fixo':'Variável'}</span></td><td>${fmtDueDay(active.dia_vencimento)}</td><td>${upcomingHtml}</td>
+      <td><div class="budget-actions">${orcamentoActionGroup('Atual', active)}${orcamentoActionGroup('Próximo', upcoming)}</div></td></tr>`;
   }).join('') || '<tr><td colspan="6" class="empty-state">Nenhum orçamento definido ainda.</td></tr>';
 }
 document.getElementById('btn-add-orc').onclick = async () => {
