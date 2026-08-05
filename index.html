@@ -18,6 +18,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
@@ -65,7 +67,7 @@
   .sidebar-footer .btn-ghost:hover{color:var(--sidebar-ink);}
 
   .main{flex:1;min-width:0;padding:28px 36px 60px;max-width:1180px;}
-  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px;flex-wrap:wrap;}
   .month-nav{display:flex;align-items:center;gap:10px;}
   .month-nav button{background:var(--surface);border:1px solid var(--border);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px;}
   .month-nav button:hover:not(:disabled){border-color:var(--ink);}
@@ -92,6 +94,7 @@
   .kpi-trend.bad{color:var(--neg);}
   .kpi-trend.neutral{color:var(--ink-faint);}
   .dashboard-actions{display:flex;justify-content:flex-end;margin-bottom:12px;}
+  .dashboard-actions{gap:8px;flex-wrap:wrap;}
   .privacy-toggle[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink);}
 
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px 24px;margin-bottom:18px;min-width:0;overflow:hidden;}
@@ -290,6 +293,7 @@
         <div id="month-input-wrap" class="month-pair topbar-style"></div>
         <button id="btn-next-mes">&rarr;</button>
       </div>
+      <button class="btn btn-ghost btn-sm" id="btn-export-month-pdf">Exportar PDF</button>
     </div>
 
     <!-- ============ PAGE: DASHBOARD ============ -->
@@ -1012,6 +1016,7 @@ document.getElementById('btn-toggle-kpi-values').onclick = () => {
   localStorage.setItem('kpiValuesHidden', state.kpiValuesHidden ? '1' : '0');
   refreshKpiPrivacy();
 };
+document.getElementById('btn-export-month-pdf').onclick = exportMonthlyPdf;
 function activePage(){ return document.querySelector('.nav-item[data-page].active').dataset.page; }
 function activeSubtab(){ const b = document.querySelector('.tab-btn[data-subtab].active'); return b ? b.dataset.subtab : null; }
 async function renderCurrentPage(){
@@ -1478,6 +1483,188 @@ async function renderOrcamentoComparativo(){
       <div class="orc-balance ${over?'over':''}">${over ? 'Excedente' : 'Restante'}: ${fmtBRL(Math.abs(diff))}</div>
     </div>`;
   }).join('');
+}
+function reportDate(ref){
+  return ref ? new Date(ref + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+}
+function reportFilename(mes){
+  return `relatorio-financeiro-${mes.referencia.slice(0,7)}.pdf`;
+}
+function addPdfFooter(doc){
+  const pages = doc.internal.getNumberOfPages();
+  for(let i=1; i<=pages; i++){
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(140,139,134);
+    doc.text(`Controle Financeiro - pagina ${i} de ${pages}`, 14, 288);
+  }
+}
+function ensurePdfSpace(doc, y, needed){
+  if(y + needed <= 282) return y;
+  doc.addPage();
+  return 18;
+}
+function addPdfSectionTitle(doc, title, y){
+  y = ensurePdfSpace(doc, y, 12);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(12);
+  doc.setTextColor(23,23,21);
+  doc.text(title, 14, y);
+  return y + 5;
+}
+function addPdfTable(doc, title, head, body, y, options={}){
+  y = addPdfSectionTitle(doc, title, y);
+  const rows = body.length ? body : [[`Nenhum item.`, ...Array(Math.max(head.length - 1, 0)).fill('')]];
+  doc.autoTable({
+    startY:y,
+    head:[head],
+    body:rows,
+    theme:'grid',
+    styles:{font:'helvetica', fontSize:8, cellPadding:2, lineColor:[227,226,220], lineWidth:.2, textColor:[23,23,21]},
+    headStyles:{fillColor:[23,23,21], textColor:[255,255,255], fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[250,250,248]},
+    margin:{left:14,right:14},
+    ...options,
+  });
+  return doc.lastAutoTable.finalY + 9;
+}
+function addPdfChart(doc, chartKey, title, y, width=182){
+  const chart = state.charts[chartKey];
+  if(!chart?.canvas) return y;
+  chart.update('none');
+  const img = chart.canvas.toDataURL('image/png', 1);
+  const ratio = chart.canvas.height / chart.canvas.width;
+  const height = Math.min(width * ratio, 78);
+  y = addPdfSectionTitle(doc, title, y);
+  y = ensurePdfSpace(doc, y, height + 4);
+  doc.addImage(img, 'PNG', 14, y, width, height);
+  return y + height + 9;
+}
+function groupValueRows(summary, itensCartao){
+  return state.grupos.map(g=>{
+    const debito = summary.diretas.filter(s=>s.grupo_id===g.id).reduce((sum,s)=>sum + Number(s.valor),0);
+    const credito = (itensCartao||[]).filter(i=>{
+      const cat = state.categorias.find(c=>c.id===i.categoria_id);
+      return cat?.grupo_id === g.id;
+    }).reduce((sum,i)=>sum + Number(i.valor),0);
+    return { row:[g.nome, fmtBRL(debito), fmtBRL(credito), fmtBRL(debito + credito)], total:debito + credito };
+  }).filter(item=>item.total > 0).map(item=>item.row);
+}
+async function collectMonthlyReport(mes){
+  const nextMes = await ensureMesExists(addMonths(mes.referencia, 1));
+  const summary = await getMonthlySummary(mes);
+  const [
+    { data: entradas },
+    { data: saidas },
+    { data: cartaoMes },
+    { data: cartaoProxima },
+    { data: totalCartaoMes },
+    { data: totalCartaoProxima },
+    { data: dividasMes },
+    { data: confirmados },
+  ] = await Promise.all([
+    db.from('entradas').select('*, fontes_renda(nome)').eq('mes_id', mes.id).order('created_at'),
+    db.from('saidas').select('*, grupos(nome), categorias(nome)').eq('mes_id', mes.id).order('data'),
+    db.from('vw_cartao_fatura_itens').select('*').eq('fatura_mes_id', mes.id),
+    db.from('vw_cartao_fatura_itens').select('*').eq('fatura_mes_id', nextMes.id),
+    db.from('vw_cartao_fatura_total').select('total').eq('mes_id', mes.id).maybeSingle(),
+    db.from('vw_cartao_fatura_total').select('total').eq('mes_id', nextMes.id).maybeSingle(),
+    db.from('vw_dividas_mes').select('*').eq('mes_id', mes.id),
+    db.from('checklist_confirmacoes').select('*').eq('mes_id', mes.id),
+  ]);
+  const orcamentos = await getOrcamentosVigentes(mes);
+  return { mes, nextMes, summary, entradas:entradas||[], saidas:saidas||[], cartaoMes:cartaoMes||[], cartaoProxima:cartaoProxima||[], totalCartaoMes:totalCartaoMes?.total || 0, totalCartaoProxima:totalCartaoProxima?.total || 0, dividasMes:dividasMes||[], confirmados:confirmados||[], orcamentos };
+}
+async function exportMonthlyPdf(){
+  if(!window.jspdf?.jsPDF || !window.jspdf || !window.jspdf.jsPDF){
+    toast('Não foi possível carregar a biblioteca de PDF. Recarregue a página.');
+    return;
+  }
+  const btn = document.getElementById('btn-export-month-pdf');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Gerando PDF...';
+  try{
+    if(activePage() === 'dashboard' && activeSubtab() !== 'dashboard'){
+      document.querySelectorAll('.tab-btn[data-subtab]').forEach(b=>b.classList.toggle('active', b.dataset.subtab === 'dashboard'));
+      document.querySelectorAll('[id^="subtab-"]').forEach(s=>s.hidden = s.id !== 'subtab-dashboard');
+    }
+    await renderDashboard();
+    await new Promise(resolve=>setTimeout(resolve, 120));
+    const report = await collectMonthlyReport(currentMes());
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({orientation:'p', unit:'mm', format:'a4'});
+    if(typeof doc.autoTable !== 'function'){
+      toast('Não foi possível carregar o gerador de tabelas do PDF. Recarregue a página.');
+      return;
+    }
+    const mesLabel = fmtMonth(report.mes.referencia);
+    let y = 18;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(18);
+    doc.setTextColor(23,23,21);
+    doc.text('Relatorio financeiro mensal', 14, y);
+    y += 8;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(10);
+    doc.setTextColor(108,107,100);
+    doc.text(`${mesLabel} - gerado em ${new Date().toLocaleDateString('pt-BR')}`, 14, y);
+    y += 8;
+
+    y = addPdfTable(doc, 'Resumo do mes', ['Indicador','Valor'], [
+      ['Entradas', fmtBRL(report.summary.totalEntradas)],
+      ['Saidas no debito', fmtBRL(report.summary.totalDiretas)],
+      ['Dividas', fmtBRL(report.summary.totalDividas)],
+      ['Cartao considerado no mes', fmtBRL(report.summary.totalCartao)],
+      ['Orcamento vigente', fmtBRL(report.summary.totalOrcamento)],
+      ['Saldo realizado', fmtBRL(report.summary.saldoRealizado)],
+      ['Saldo projetado', fmtBRL(report.summary.saldoProjetado)],
+    ], y, {columnStyles:{1:{halign:'right'}}});
+
+    y = addPdfChart(doc, 'saldoComparativo', 'Saldo projetado x realizado', y);
+    y = addPdfChart(doc, 'composicaoSaidas', 'Composicao das saidas', y);
+    y = addPdfChart(doc, 'saidasCategorias', 'Saidas no debito por grupo', y, 88);
+    y = addPdfChart(doc, 'cartaoCategorias', 'Saidas no credito por grupo', y, 88);
+
+    y = addPdfTable(doc, 'Saidas por grupo', ['Grupo','Debito','Credito','Total'], groupValueRows(report.summary, report.cartaoProxima), y, {columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'}}});
+
+    const gastoPorCategoria = {};
+    [...report.saidas, ...report.cartaoProxima].forEach(item=>{
+      if(item.categoria_id) gastoPorCategoria[item.categoria_id] = (gastoPorCategoria[item.categoria_id] || 0) + Number(item.valor);
+    });
+    y = addPdfTable(doc, 'Orcado x realizado', ['Categoria','Tipo','Orcado','Realizado','Saldo'], report.orcamentos.filter(o=>Number(o.valor_esperado)>0).map(o=>{
+      const cat = state.categorias.find(c=>c.id===o.categoria_id);
+      const realizado = gastoPorCategoria[o.categoria_id] || 0;
+      const diff = Number(o.valor_esperado) - realizado;
+      return [cat?.nome || '', o.tipo==='fixo'?'Fixo':'Variavel', fmtBRL(o.valor_esperado), fmtBRL(realizado), `${diff < 0 ? 'Excedente ' : 'Restante '}${fmtBRL(Math.abs(diff))}`];
+    }), y, {columnStyles:{2:{halign:'right'},3:{halign:'right'},4:{halign:'right'}}});
+
+    y = addPdfTable(doc, 'Entradas', ['Descricao','Fonte','Valor'], report.entradas.map(e=>[e.descricao || '', e.fontes_renda?.nome || 'Extra', fmtBRL(e.valor)]), y, {columnStyles:{2:{halign:'right'}}});
+    y = addPdfTable(doc, 'Saidas no debito', ['Data','Descricao','Grupo','Categoria','Valor'], report.saidas.map(s=>[reportDate(s.data), s.descricao || '', s.grupos?.nome || '', s.categorias?.nome || '', fmtBRL(s.valor)]), y, {columnStyles:{4:{halign:'right'}}});
+    y = addPdfTable(doc, `Cartao considerado no mes (${fmtBRL(report.totalCartaoMes)})`, ['Descricao','Categoria','Valor','Origem'], report.cartaoMes.map(i=>[i.descricao || '', state.categorias.find(c=>c.id===i.categoria_id)?.nome || '', fmtBRL(i.valor), i.origem==='recorrente'?'Recorrente':'Lancamento']), y, {columnStyles:{2:{halign:'right'}}});
+    y = addPdfTable(doc, `Proxima fatura (${fmtBRL(report.totalCartaoProxima)})`, ['Descricao','Categoria','Valor','Origem'], report.cartaoProxima.map(i=>[i.descricao || '', state.categorias.find(c=>c.id===i.categoria_id)?.nome || '', fmtBRL(i.valor), i.origem==='recorrente'?'Recorrente':'Lancamento']), y, {columnStyles:{2:{halign:'right'}}});
+    y = addPdfTable(doc, 'Dividas do mes', ['Descricao','Parcela','Valor','Vencimento'], report.dividasMes.map(d=>[d.descricao || d.nome || '', d.parcela_atual ? `${d.parcela_atual}/${d.total_parcelas || ''}` : 'Entrada', fmtBRL(d.valor || d.valor_parcela || 0), fmtDueDay(d.dia_vencimento)]), y, {columnStyles:{2:{halign:'right'}}});
+
+    const confirmSet = new Set(report.confirmados.map(c=>c.origem+'|'+c.origem_id));
+    const checklistRows = [
+      ...report.orcamentos.filter(o=>o.tipo==='fixo').map(o=>['Orcamento', state.categorias.find(c=>c.id===o.categoria_id)?.nome || '', confirmSet.has('orcamento|'+o.orcamento_id) ? 'Pago' : 'Pendente', fmtDueDay(o.dia_vencimento)]),
+      ...report.dividasMes.map(d=>{
+        const key = `${d.divida_id}-${d.parcela_atual ?? 'entrada'}`;
+        return ['Divida', d.descricao || d.nome || '', confirmSet.has('divida|'+key) ? 'Pago' : 'Pendente', fmtDueDay(d.dia_vencimento)];
+      })
+    ];
+    y = addPdfTable(doc, 'Checklist', ['Origem','Item','Status','Vencimento'], checklistRows, y);
+
+    addPdfFooter(doc);
+    doc.save(reportFilename(report.mes));
+    toast('PDF gerado.');
+  } catch(e){
+    console.error(e);
+    toast('Erro ao gerar PDF: ' + (e.message || e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 }
 
 /* ---------- LANÇAMENTOS ---------- */
