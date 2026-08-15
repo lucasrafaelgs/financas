@@ -1850,8 +1850,9 @@ async function renderChecklist(){
       const domId = 'chk-d-' + key;
       const checked = confirmSet.has('divida|'+key);
       const dueDay = d.dia_vencimento || dividaDueMap[d.divida_id];
+      const valorHtml = privateMoneyHtml(d.valor || d.valor_parcela || 0, 'check-value');
       return `<div class="check-row"><input type="checkbox" id="${domId}" ${checked?'checked':''} onchange="toggleChecklist('divida','${key}', this.checked)">
-        <label for="${domId}" class="${checked?'done':''}">${d.descricao}${dueStatusHtml(dueDay, mes.referencia, checked)}</label></div>`;
+        <label for="${domId}" class="${checked?'done':''}">${d.descricao}${valorHtml}${dueStatusHtml(dueDay, mes.referencia, checked)}</label></div>`;
     }).join('');
   }
   document.getElementById('checklist-list').innerHTML = html || '<div class="empty-state">Nenhum item vigente neste mês.</div>';
