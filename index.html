@@ -230,6 +230,7 @@
   .check-row label{font-size:13.5px;cursor:pointer;flex:1;}
   .check-row label.done{color:var(--ink-faint);text-decoration:line-through;}
   .check-row label .due-pill{vertical-align:middle;}
+  .check-value{display:inline-flex;margin-left:8px;font-size:11px;font-weight:600;color:var(--ink);white-space:nowrap;}
 
   @media(max-width:980px){
     .app-shell{flex-direction:column;}
@@ -318,6 +319,7 @@
             <div class="kpi-label">Saldo remanescente</div>
             <div class="kpi-value num" id="kpi-saldo">—</div>
             <div class="kpi-secondary">Projetado: <span class="num" id="kpi-saldo-projetado">—</span></div>
+            <div class="kpi-secondary">Orç. variável: <span class="num" id="kpi-orcamento-variavel">—</span></div>
             <div class="kpi-trend" id="trend-saldo"></div>
           </div>
         </div>
@@ -647,6 +649,11 @@ const fmtBRL = v => (Number(v) || 0).toLocaleString('pt-BR', {style:'currency', 
 const START_REF = '2026-07-01';
 const FIRST_COMPARE_REF = '2026-08-01';
 function maskBRL(){ return 'R$ •••'; }
+function privateMoneyHtml(value, className=''){
+  const safeValue = String(Number(value) || 0);
+  const text = state.kpiValuesHidden ? maskBRL() : fmtBRL(value);
+  return `<span class="num private-money ${className}" data-value="${safeValue}">${text}</span>`;
+}
 function setKpiValue(id, value){
   const el = document.getElementById(id);
   el.dataset.value = String(Number(value) || 0);
@@ -669,6 +676,9 @@ function refreshKpiPrivacy(){
     el.textContent = state.kpiValuesHidden ? maskBRL() : fmtBRL(el.dataset.value);
   });
   document.querySelectorAll('.kpi-secondary .num[data-value]').forEach(el=>{
+    el.textContent = state.kpiValuesHidden ? maskBRL() : fmtBRL(el.dataset.value);
+  });
+  document.querySelectorAll('.private-money[data-value]').forEach(el=>{
     el.textContent = state.kpiValuesHidden ? maskBRL() : fmtBRL(el.dataset.value);
   });
   document.querySelectorAll('.kpi-trend[data-text]').forEach(el=>{
@@ -1136,12 +1146,14 @@ async function getMonthlySummary(mes){
   const totalDiretas = diretas.reduce((s,c)=>s+Number(c.valor),0);
   const totalDividas = dividasLinhas.reduce((s,c)=>s+Number(c.valor),0);
   const totalCartao = cartaoLinhas.reduce((s,c)=>s+Number(c.valor),0);
-  const totalOrcamento = (orcamentos||[]).filter(o=>Number(o.valor_esperado) > 0).reduce((s,o)=>s+Number(o.valor_esperado),0);
+  const orcamentosPositivos = (orcamentos||[]).filter(o=>Number(o.valor_esperado) > 0);
+  const totalOrcamento = orcamentosPositivos.reduce((s,o)=>s+Number(o.valor_esperado),0);
+  const totalOrcamentoVariavel = orcamentosPositivos.filter(o=>o.tipo==='variavel').reduce((s,o)=>s+Number(o.valor_esperado),0);
   const saldoRealizado = totalEntradas - totalDiretas - totalDividas - totalCartao;
   const baseProjetada = Math.max(totalEntradas, totalRendaCadastrada);
   const saldoRealizadoComRenda = baseProjetada - totalDiretas - totalDividas - totalCartao;
   const saldoProjetado = baseProjetada - totalOrcamento - totalDividas - totalCartao;
-  return { consolidado, diretas, totalEntradas, totalRendaCadastrada, totalDiretas, totalDividas, totalCartao, totalOrcamento, saldoRealizado, saldoRealizadoComRenda, saldoProjetado };
+  return { consolidado, diretas, totalEntradas, totalRendaCadastrada, totalDiretas, totalDividas, totalCartao, totalOrcamento, totalOrcamentoVariavel, saldoRealizado, saldoRealizadoComRenda, saldoProjetado };
 }
 
 async function renderDashboard(){
@@ -1172,6 +1184,7 @@ async function renderDashboard(){
   setKpiValue('kpi-cartao', resumo.totalCartao);
   setKpiValue('kpi-saldo', resumo.saldoRealizado);
   setPrivateMoney('kpi-saldo-projetado', resumo.saldoProjetado);
+  setPrivateMoney('kpi-orcamento-variavel', resumo.totalOrcamentoVariavel);
   setKpiTrend('trend-entradas', resumo.totalEntradas, resumoPrev?.totalEntradas, 'income');
   setKpiTrend('trend-saidas', resumo.totalDiretas, resumoPrev?.totalDiretas, 'cost');
   setKpiTrend('trend-dividas', resumo.totalDividas, resumoPrev?.totalDividas, 'cost');
@@ -1617,6 +1630,7 @@ async function exportMonthlyPdf(){
       ['Dividas', fmtBRL(report.summary.totalDividas)],
       ['Cartao considerado no mes', fmtBRL(report.summary.totalCartao)],
       ['Orcamento vigente', fmtBRL(report.summary.totalOrcamento)],
+      ['Orcamento variavel', fmtBRL(report.summary.totalOrcamentoVariavel)],
       ['Saldo realizado', fmtBRL(report.summary.saldoRealizado)],
       ['Saldo projetado', fmtBRL(report.summary.saldoProjetado)],
     ], y, {columnStyles:{1:{halign:'right'}}});
@@ -1825,8 +1839,9 @@ async function renderChecklist(){
       const domId = 'chk-o-' + key;
       const checked = confirmSet.has('orcamento|'+key);
       const dueDay = o.dia_vencimento || orcDueMap[o.orcamento_id];
+      const valorHtml = privateMoneyHtml(o.valor_esperado, 'check-value');
       return `<div class="check-row"><input type="checkbox" id="${domId}" ${checked?'checked':''} onchange="toggleChecklist('orcamento','${key}', this.checked)">
-        <label for="${domId}" class="${checked?'done':''}">${nome}${o.tipo==='fixo'?' <span class="tag">Fixo</span>':''}${dueStatusHtml(dueDay, mes.referencia, checked)}</label></div>`;
+        <label for="${domId}" class="${checked?'done':''}">${nome}${o.tipo==='fixo'?' <span class="tag">Fixo</span>':''}${valorHtml}${dueStatusHtml(dueDay, mes.referencia, checked)}</label></div>`;
     }).join('');
   }
   if(dividasMes && dividasMes.length){
