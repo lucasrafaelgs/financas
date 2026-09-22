@@ -319,6 +319,7 @@
             <div class="kpi-label">Saldo remanescente</div>
             <div class="kpi-value num" id="kpi-saldo">—</div>
             <div class="kpi-secondary">Projetado: <span class="num" id="kpi-saldo-projetado">—</span></div>
+            <div class="kpi-secondary">Orç. fixo: <span class="num" id="kpi-orcamento-fixo">—</span></div>
             <div class="kpi-secondary">Orç. variável: <span class="num" id="kpi-orcamento-variavel">—</span></div>
             <div class="kpi-trend" id="trend-saldo"></div>
           </div>
@@ -904,18 +905,7 @@ async function bootstrap(){
   hideError();
   try{
     await Promise.all([loadMeses(), loadGrupos(), loadCategorias(), loadFontes()]);
-    if(state.meses.length === 0){
-      await criarMes(new Date().toISOString().slice(0,7)+'-01');
-      await loadMeses();
-    }
-    if(state.meses.length === 0){
-      throw new Error('Não consegui criar/ler o mês inicial. Confira se a migração SQL rodou sem erros e se a tabela "meses" tem a política de RLS para usuários autenticados.');
-    }
-    if(state.currentMesIdx < 0 || state.currentMesIdx >= state.meses.length){
-      const todayRef = new Date().toISOString().slice(0,7) + '-01';
-      const todayMes = await ensureMesExists(todayRef);
-      state.currentMesIdx = state.meses.findIndex(m=>m.id===todayMes.id);
-    }
+    await ensureActiveMonthSelection();
     populateStaticSelects();
     renderMonthNav();
     toggleTopbar();
@@ -940,7 +930,23 @@ async function ensureMesExists(referencia){
   if(m) return m;
   await criarMes(referencia);
   await loadMeses();
-  return state.meses.find(x=>x.referencia===referencia);
+  m = state.meses.find(x=>x.referencia===referencia);
+  if(!m) throw new Error(`Não consegui carregar o mês ${referencia}. Confira a tabela "meses" e as políticas de acesso no Supabase.`);
+  return m;
+}
+async function ensureActiveMonthSelection(){
+  if(!state.meses.length) await loadMeses();
+  if(!state.meses.length){
+    await criarMes(new Date().toISOString().slice(0,7)+'-01');
+    await loadMeses();
+  }
+  if(state.currentMesIdx < 0 || state.currentMesIdx >= state.meses.length || !currentMes()){
+    const todayRef = new Date().toISOString().slice(0,7) + '-01';
+    const todayMes = await ensureMesExists(todayRef);
+    state.currentMesIdx = state.meses.findIndex(m=>m.id===todayMes.id);
+  }
+  if(!currentMes()) throw new Error('Não há mês selecionado para renderizar esta tela.');
+  return currentMes();
 }
 async function mesAtual(){
   const ref = new Date().toISOString().slice(0,7) + '-01';
@@ -1032,6 +1038,7 @@ function activeSubtab(){ const b = document.querySelector('.tab-btn[data-subtab]
 async function renderCurrentPage(){
   hideError();
   try{
+    await ensureActiveMonthSelection();
     const page = activePage();
     if(page === 'dashboard'){
       const sub = activeSubtab();
@@ -1148,12 +1155,13 @@ async function getMonthlySummary(mes){
   const totalCartao = cartaoLinhas.reduce((s,c)=>s+Number(c.valor),0);
   const orcamentosPositivos = (orcamentos||[]).filter(o=>Number(o.valor_esperado) > 0);
   const totalOrcamento = orcamentosPositivos.reduce((s,o)=>s+Number(o.valor_esperado),0);
+  const totalOrcamentoFixo = orcamentosPositivos.filter(o=>o.tipo==='fixo').reduce((s,o)=>s+Number(o.valor_esperado),0);
   const totalOrcamentoVariavel = orcamentosPositivos.filter(o=>o.tipo==='variavel').reduce((s,o)=>s+Number(o.valor_esperado),0);
   const saldoRealizado = totalEntradas - totalDiretas - totalDividas - totalCartao;
   const baseProjetada = Math.max(totalEntradas, totalRendaCadastrada);
   const saldoRealizadoComRenda = baseProjetada - totalDiretas - totalDividas - totalCartao;
   const saldoProjetado = baseProjetada - totalOrcamento - totalDividas - totalCartao;
-  return { consolidado, diretas, totalEntradas, totalRendaCadastrada, totalDiretas, totalDividas, totalCartao, totalOrcamento, totalOrcamentoVariavel, saldoRealizado, saldoRealizadoComRenda, saldoProjetado };
+  return { consolidado, diretas, totalEntradas, totalRendaCadastrada, totalDiretas, totalDividas, totalCartao, totalOrcamento, totalOrcamentoFixo, totalOrcamentoVariavel, saldoRealizado, saldoRealizadoComRenda, saldoProjetado };
 }
 
 async function renderDashboard(){
@@ -1184,6 +1192,7 @@ async function renderDashboard(){
   setKpiValue('kpi-cartao', resumo.totalCartao);
   setKpiValue('kpi-saldo', resumo.saldoRealizado);
   setPrivateMoney('kpi-saldo-projetado', resumo.saldoProjetado);
+  setPrivateMoney('kpi-orcamento-fixo', resumo.totalOrcamentoFixo);
   setPrivateMoney('kpi-orcamento-variavel', resumo.totalOrcamentoVariavel);
   setKpiTrend('trend-entradas', resumo.totalEntradas, resumoPrev?.totalEntradas, 'income');
   setKpiTrend('trend-saidas', resumo.totalDiretas, resumoPrev?.totalDiretas, 'cost');
@@ -1630,6 +1639,7 @@ async function exportMonthlyPdf(){
       ['Dividas', fmtBRL(report.summary.totalDividas)],
       ['Cartao considerado no mes', fmtBRL(report.summary.totalCartao)],
       ['Orcamento vigente', fmtBRL(report.summary.totalOrcamento)],
+      ['Orcamento fixo', fmtBRL(report.summary.totalOrcamentoFixo)],
       ['Orcamento variavel', fmtBRL(report.summary.totalOrcamentoVariavel)],
       ['Saldo realizado', fmtBRL(report.summary.saldoRealizado)],
       ['Saldo projetado', fmtBRL(report.summary.saldoProjetado)],
