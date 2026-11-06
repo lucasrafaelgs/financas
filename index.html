@@ -533,7 +533,7 @@
         <div class="panel-head">
           <div>
             <div class="panel-title">Novo valor esperado</div>
-            <div class="panel-sub">Vale a partir do mês escolhido, pra frente, até você lançar um novo valor pra mesma categoria. Só itens "Variável" entram no comparativo do Dashboard; itens "Fixo" aparecem no Checklist.</div>
+            <div class="panel-sub">Defina quando o valor começa e, se for temporário, quando termina. O mês final ainda entra no orçamento. Só itens "Variável" entram no comparativo do Dashboard; itens "Fixo" aparecem no Checklist.</div>
           </div>
         </div>
         <div class="form-row">
@@ -542,6 +542,7 @@
           <div class="form-field"><label>Tipo</label><select id="orc-tipo"><option value="variavel">Variável</option><option value="fixo">Fixo</option></select></div>
           <div class="form-field"><label>Dia de vencimento</label><input id="orc-vencimento" type="number" min="1" max="31" placeholder="Ex: 5"></div>
           <div class="form-field"><label>Vigente a partir de</label><div id="orc-vigencia-wrap" class="month-pair"></div></div>
+          <div class="form-field"><label>Vigente até (opcional)</label><div id="orc-fim-wrap" class="month-pair"></div></div>
           <button class="btn btn-primary" id="btn-add-orc">Adicionar</button>
         </div>
         <div class="table-scroll"><table>
@@ -822,6 +823,10 @@ function delBtn(table, id){ return `<button class="icon-btn danger" onclick="del
 async function openEditFromRegistry(key){
   const cfg = editRegistry[key];
   openModal(cfg.title, cfg.fields, cfg.values, async (vals) => {
+    if(vals.mes_vigencia_id && vals.mes_fim_id && vals.mes_fim_id < vals.mes_vigencia_id){
+      toast('O mês final não pode ser anterior ao mês inicial.');
+      return;
+    }
     for(const mk of cfg.monthFields){
       if(vals[mk]){ const mes = await ensureMesExists(vals[mk]); vals[mk] = mes.id; }
       else vals[mk] = null;
@@ -829,7 +834,13 @@ async function openEditFromRegistry(key){
     const { error } = vals.hasOwnProperty('dia_vencimento')
       ? await updateWithOptionalDue(cfg.table, cfg.id, vals)
       : await db.from(cfg.table).update(vals).eq('id', cfg.id);
-    if(error){ toast('Erro: ' + error.message); return; }
+    if(error){
+      const message = /mes_fim_id/i.test(error.message || '')
+        ? 'A coluna mes_fim_id ainda precisa ser criada no Supabase antes de salvar o término.'
+        : 'Erro: ' + error.message;
+      toast(message);
+      return;
+    }
     closeModal(); await bootstrap();
   });
 }
@@ -1106,6 +1117,7 @@ function populateStaticSelects(){
   document.getElementById('rec-inicio-wrap').innerHTML = monthYearHtml('rec-inicio', defaultMonth);
   document.getElementById('rec-fim-wrap').innerHTML = monthYearHtml('rec-fim', '', true);
   document.getElementById('orc-vigencia-wrap').innerHTML = monthYearHtml('orc-vigencia', defaultMonth);
+  document.getElementById('orc-fim-wrap').innerHTML = monthYearHtml('orc-fim', '', true);
 }
 function refreshCategoriaSelectSaida(){
   const grupoId = document.getElementById('saida-grupo').value;
@@ -1119,22 +1131,26 @@ function refreshCategoriaSelectSaida(){
   descInput.dataset.required = isOutros ? '1' : '0';
 }
 async function getOrcamentosVigentes(mes){
-  const { data, error } = await db.from('orcamentos').select('*, meses(referencia)');
+  const { data, error } = await db.from('orcamentos').select('*');
   if(error) throw new Error('orcamentos: ' + error.message);
   const vigentesPorCategoria = {};
   (data||[]).forEach(o=>{
-    const referencia = o.meses?.referencia;
+    const referencia = state.meses.find(m=>m.id===o.mes_vigencia_id)?.referencia;
     if(!referencia || referencia > mes.referencia) return;
     const atual = vigentesPorCategoria[o.categoria_id];
-    if(!atual || referencia > atual.meses.referencia || (referencia === atual.meses.referencia && o.created_at > atual.created_at)){
-      vigentesPorCategoria[o.categoria_id] = o;
+    const atualRef = atual ? state.meses.find(m=>m.id===atual.mes_vigencia_id)?.referencia : '';
+    if(!atual || referencia > atualRef || (referencia === atualRef && o.created_at > atual.created_at)){
+      vigentesPorCategoria[o.categoria_id] = {...o, mes_vigencia_referencia:referencia};
     }
   });
-  return Object.values(vigentesPorCategoria).map(o=>({
+  return Object.values(vigentesPorCategoria).filter(o=>{
+    if(!o.mes_fim_id) return true;
+    const fimRef = state.meses.find(m=>m.id===o.mes_fim_id)?.referencia;
+    return !fimRef || mes.referencia <= fimRef;
+  }).map(o=>({
     ...o,
     mes_id: mes.id,
     orcamento_id: o.id,
-    mes_vigencia_referencia: o.meses?.referencia,
   }));
 }
 
@@ -1972,13 +1988,16 @@ document.getElementById('btn-add-divida').onclick = async () => {
 
 /* ---------- ORÇAMENTO ---------- */
 function registerOrcamentoEdit(o, title){
+  const inicioRef = state.meses.find(m=>m.id===o.mes_vigencia_id)?.referencia || '';
+  const fimRef = state.meses.find(m=>m.id===o.mes_fim_id)?.referencia || '';
   return registerEdit('orcamentos', o.id, title, [
     {key:'categoria_id', label:'Categoria', type:'select', options: sortedCategorias().map(c=>({value:c.id,label:c.nome}))},
     {key:'valor_esperado', label:'Valor esperado', type:'currency'},
     {key:'tipo', label:'Tipo', type:'select', options:[{value:'variavel',label:'Variável'},{value:'fixo',label:'Fixo'}]},
     {key:'dia_vencimento', label:'Dia de vencimento', type:'number'},
     {key:'mes_vigencia_id', label:'Vigente a partir de', type:'month'},
-  ], { categoria_id:o.categoria_id, valor_esperado:o.valor_esperado, tipo:o.tipo, dia_vencimento:o.dia_vencimento || '', mes_vigencia_id:(o.meses?.referencia||'').slice(0,7) }, ['mes_vigencia_id']);
+    {key:'mes_fim_id', label:'Vigente até (opcional)', type:'month'},
+  ], { categoria_id:o.categoria_id, valor_esperado:o.valor_esperado, tipo:o.tipo, dia_vencimento:o.dia_vencimento || '', mes_vigencia_id:inicioRef.slice(0,7), mes_fim_id:fimRef.slice(0,7) }, ['mes_vigencia_id','mes_fim_id']);
 }
 function orcamentoActionGroup(label, item){
   if(!item) return '';
@@ -1986,7 +2005,8 @@ function orcamentoActionGroup(label, item){
   return `<span class="budget-action-group"><span class="budget-action-label">${label}</span>${editBtn(key)}${delBtn('orcamentos', item.id)}</span>`;
 }
 async function renderOrcamento(){
-  const { data } = await db.from('orcamentos').select('*, categorias(nome), meses(referencia)').order('created_at', {ascending:false});
+  const { data, error } = await db.from('orcamentos').select('*').order('created_at', {ascending:false});
+  if(error){ showError('orcamentos: ' + error.message); return; }
   const currentRef = currentMes()?.referencia || START_REF;
   const groups = {};
   (data||[]).forEach(o=>{
@@ -1996,24 +2016,33 @@ async function renderOrcamento(){
   });
   const rows = Object.values(groups).map(items=>{
     const sorted = items.sort((a,b)=>{
-      const refCmp = (a.meses?.referencia||'').localeCompare(b.meses?.referencia||'');
+      const aRef = state.meses.find(m=>m.id===a.mes_vigencia_id)?.referencia || '';
+      const bRef = state.meses.find(m=>m.id===b.mes_vigencia_id)?.referencia || '';
+      const refCmp = aRef.localeCompare(bRef);
       if(refCmp) return refCmp;
       return (a.created_at||'').localeCompare(b.created_at||'');
     });
     const activeIndex = sorted.reduce((found, item, idx)=>
-      (item.meses?.referencia || '') <= currentRef ? idx : found
+      (state.meses.find(m=>m.id===item.mes_vigencia_id)?.referencia || '') <= currentRef ? idx : found
     , -1);
     const active = activeIndex >= 0 ? sorted[activeIndex] : sorted[0];
-    const upcoming = sorted.find((item, idx)=>idx > sorted.indexOf(active) && (item.meses?.referencia || '') > currentRef);
-    return { active, upcoming, categoriaNome: active.categorias?.nome || '' };
+    const upcoming = sorted.find((item, idx)=>idx > sorted.indexOf(active) && (state.meses.find(m=>m.id===item.mes_vigencia_id)?.referencia || '') > currentRef);
+    return { active, upcoming, categoriaNome: state.categorias.find(c=>c.id===active.categoria_id)?.nome || '' };
   }).sort((a,b)=>a.categoriaNome.localeCompare(b.categoriaNome,'pt-BR'));
   document.getElementById('tbl-orcamento').innerHTML = rows.map(row=>{
     const active = row.active;
     const upcoming = row.upcoming;
-    const activeRef = active.meses?.referencia || '';
-    const activeLabel = activeRef > currentRef ? `Programado para ${fmtMonth(activeRef)}` : `Atual desde ${fmtMonth(activeRef)}`;
+    const activeRef = state.meses.find(m=>m.id===active.mes_vigencia_id)?.referencia || '';
+    const endRef = state.meses.find(m=>m.id===active.mes_fim_id)?.referencia || '';
+    const ended = !!endRef && endRef < currentRef;
+    const activeLabel = activeRef > currentRef
+      ? `Programado para ${fmtMonth(activeRef)}`
+      : ended
+        ? `Encerrado em ${fmtMonth(endRef)}`
+        : `Atual desde ${fmtMonth(activeRef)}${endRef ? ` · até ${fmtMonth(endRef)}` : ''}`;
+    const upcomingRef = upcoming ? state.meses.find(m=>m.id===upcoming.mes_vigencia_id)?.referencia || '' : '';
     const upcomingHtml = upcoming
-      ? `<div class="budget-main">${fmtBRL(upcoming.valor_esperado)}</div><div class="budget-sub">A partir de ${fmtMonth(upcoming.meses?.referencia||'')}</div>`
+      ? `<div class="budget-main">${fmtBRL(upcoming.valor_esperado)}</div><div class="budget-sub">A partir de ${fmtMonth(upcomingRef)}</div>`
       : '<span class="tag">Sem alteração</span>';
     return `<tr><td>${row.categoriaNome}</td><td class="num"><div class="budget-main">${fmtBRL(active.valor_esperado)}</div><div class="budget-sub">${activeLabel}</div></td>
       <td><span class="tag">${active.tipo==='fixo'?'Fixo':'Variável'}</span></td><td>${fmtDueDay(active.dia_vencimento)}</td><td>${upcomingHtml}</td>
@@ -2026,11 +2055,21 @@ document.getElementById('btn-add-orc').onclick = async () => {
   const tipo = document.getElementById('orc-tipo').value;
   const dia_vencimento = getDueDayValue(document.getElementById('orc-vencimento'));
   const vigenciaVal = readMonthYear(document.getElementById('orc-vigencia-wrap'), 'orc-vigencia');
+  const fimVal = readMonthYear(document.getElementById('orc-fim-wrap'), 'orc-fim');
   if(!categoria_id || !valor_esperado || !vigenciaVal){ toast('Preencha categoria, valor e mês de vigência.'); return; }
+  if(fimVal && fimVal < vigenciaVal){ toast('O mês final não pode ser anterior ao mês inicial.'); return; }
   const mes = await ensureMesExists(vigenciaVal);
-  const { error } = await insertWithOptionalDue('orcamentos', { categoria_id, valor_esperado, tipo, dia_vencimento, mes_vigencia_id: mes.id });
-  if(error){ toast('Erro: ' + error.message); return; }
+  const mesFim = fimVal ? await ensureMesExists(fimVal) : null;
+  const { error } = await insertWithOptionalDue('orcamentos', { categoria_id, valor_esperado, tipo, dia_vencimento, mes_vigencia_id: mes.id, mes_fim_id:mesFim?.id || null });
+  if(error){
+    const message = /mes_fim_id/i.test(error.message || '')
+      ? 'A coluna mes_fim_id ainda precisa ser criada no Supabase antes de salvar o término.'
+      : 'Erro: ' + error.message;
+    toast(message);
+    return;
+  }
   document.getElementById('orc-valor').value = ''; document.getElementById('orc-vencimento').value = '';
+  document.getElementById('orc-fim-wrap').innerHTML = monthYearHtml('orc-fim', '', true);
   renderOrcamento();
 };
 
